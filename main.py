@@ -278,7 +278,7 @@ class YouTubeTelegramDownloader:
         files_to_clean = [
             download_result.video_path,
             download_result.thumbnail_path,
-            download_result.video_path.rsplit('.', 1)[0] + '.info.json'
+            f"{base_name}.webp"
         ]
         
         for file_path in files_to_clean:
@@ -306,7 +306,7 @@ Create a .env file in the same directory as this script with the following conte
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
 TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHANNEL_ID=-1001234567890  # Your channel ID (numeric, no quotes)
+TELEGRAM_CHANNEL_ID=-100XXXXXXXXXX # Your channel ID (numeric, no quotes)
 
 Replace the values with your actual Telegram API credentials.
 You can obtain them from https://my.telegram.org/apps
