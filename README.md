@@ -1,4 +1,4 @@
-# YouTube to Telegram Downloader
+# YT-TG-Upload
 
 A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel.
 
@@ -25,8 +25,8 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/youtube-telegram-downloader.git
-   cd youtube-telegram-downloader
+   git clone https://github.com/AliMehdiAbdi/YT-TG-Upload.git
+   cd YT-TG-Upload
    ```
 
 2. Install the required dependencies:
@@ -117,3 +117,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+---
+
+Made with ❤️ by **Ali Mehdi** • [![GitHub](https://img.shields.io/badge/GitHub-Profile-blue)](https://github.com/AliMehdiAbdi)
