@@ -19,7 +19,7 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 - Python 3.7 or higher
 - Telegram API credentials (API ID, API Hash)
 - A Telegram Bot token
-- FFmpeg (optional, for thumbnail conversion)
+- FFmpeg
 
 ## 🚀 Installation
 
