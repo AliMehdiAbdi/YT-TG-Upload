@@ -24,8 +24,8 @@ class AudioFormat(TypedDict):
     ext: str
 
 class VideoInfo(TypedDict):
-    video_formats: Dict[str, str]  # Changed to str for display purposes
-    audio_formats: Dict[str, str]  # Changed to str for display purposes
+    video_formats: Dict[str, str]
+    audio_formats: Dict[str, str]
     title: str
     duration: int
     thumbnail: Optional[str]
@@ -321,8 +321,13 @@ def main() -> None:
     print("=============================")
     
     # Check for required environment variables
-    if not all(os.getenv(var) for var in ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH']):
-        print("ERROR: Required environment variables not set.")
+    required_vars = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        print("ERROR: Missing required environment variables:")
+        for var in missing_vars:
+            print(f"- {var}")
         print(get_env_setup_instructions())
         return
     
@@ -332,27 +337,9 @@ def main() -> None:
         print("ERROR: URL cannot be empty")
         return
     
-    # Get credentials
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN') or input("Enter Telegram bot token: ").strip()
-    if not bot_token:
-        print("ERROR: Bot token is required")
-        return
-    
-    channel_id = os.getenv('TELEGRAM_CHANNEL_ID')
-    if not channel_id:
-        channel_id_input = input("Enter Telegram channel ID (e.g., -1001234567890 or @channel): ").strip()
-        if not channel_id_input:
-            print("ERROR: Channel ID is required")
-            return
-        
-        if channel_id_input.startswith('@'):
-            channel_id = channel_id_input
-        else:
-            try:
-                channel_id = int(channel_id_input)
-            except ValueError:
-                print("ERROR: Channel ID must be numeric (like -1001234567890) or start with @")
-                return
+    # Get credentials from environment
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    channel_id = int(os.getenv('TELEGRAM_CHANNEL_ID'))
     
     # Optional cookies file
     cookies_file = input("Enter path to cookies file (optional, press Enter to skip): ").strip()
