@@ -367,7 +367,7 @@ def main() -> None:
             print("ERROR: Invalid YouTube URL")
             return
         
-        print("Fetching available formats...")
+        print("Fetching Available Formats...")
         try:
             formats = downloader.get_video_qualities(url)
         except Exception as e:
