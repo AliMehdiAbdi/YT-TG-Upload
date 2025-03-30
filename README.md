@@ -39,6 +39,7 @@ A Python tool that allows you to download YouTube videos in your preferred quali
    TELEGRAM_API_ID=your_api_id
    TELEGRAM_API_HASH=your_api_hash
    TELEGRAM_BOT_TOKEN=your_bot_token
+   TELEGRAM_CHANNEL_ID=-100XXXXXXXXXX
    ```
 
 ## 🔑 Obtaining Telegram Credentials
