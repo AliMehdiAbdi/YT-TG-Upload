@@ -189,9 +189,15 @@ class YouTubeTelegramDownloader:
             self.logger.error(f"Thumbnail conversion failed: {e}")
             return None
 
-    def download_video(self, url: str, video_format: str, audio_format: Optional[str] = None) -> DownloadResult:
+    def download_video(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4') -> DownloadResult:
         """
-        Download YouTube video with specified formats
+        Download YouTube video with specified formats and container
+        
+        :param url: YouTube video URL
+        :param video_format: Video format ID
+        :param audio_format: Optional audio format ID
+        :param container_format: Container format (mp4, mkv, webm)
+        :return: DownloadResult with path and metadata
         """
         if not self.validate_youtube_url(url):
             raise ValueError(f"Invalid YouTube URL: {url}")
@@ -199,11 +205,18 @@ class YouTubeTelegramDownloader:
         if not video_format:
             raise ValueError("Video format ID cannot be empty")
         
+        # Validate container format
+        valid_containers = ['mp4', 'mkv', 'webm']
+        if container_format not in valid_containers:
+            self.logger.warning(f"Invalid container format: {container_format}. Using mp4 instead.")
+            container_format = 'mp4'
+        
         ydl_opts = {
             'format': f'{video_format}+{audio_format}' if audio_format else video_format,
             'outtmpl': '%(title)s.%(ext)s',
             'writethumbnail': True,
             'no_warnings': False,
+            'merge_output_format': container_format,  # Specify the container format
         }
         
         if self.cookies_file:
@@ -214,19 +227,15 @@ class YouTubeTelegramDownloader:
                 info_dict = ydl.extract_info(url, download=True)
                 video_filename = ydl.prepare_filename(info_dict)
                 
-                # Handle different file extensions
-                if not os.path.exists(video_filename):
-                    for ext in ['mp4', 'mkv', 'webm']:
-                        alt_filename = video_filename.rsplit('.', 1)[0] + f'.{ext}'
-                        if os.path.exists(alt_filename):
-                            video_filename = alt_filename
-                            break
+                # Update extension to match the selected container format
+                base_filename = video_filename.rsplit('.', 1)[0]
+                video_filename = f"{base_filename}.{container_format}"
                 
                 if not os.path.exists(video_filename):
                     raise FileNotFoundError(f"Downloaded video file not found: {video_filename}")
                 
                 # Find thumbnail
-                base_name = video_filename.rsplit('.', 1)[0]
+                base_name = base_filename
                 thumbnail_path = next(
                     (f"{base_name}.{ext}" for ext in ['webp', 'jpg', 'png'] 
                     if os.path.exists(f"{base_name}.{ext}")
@@ -275,18 +284,28 @@ class YouTubeTelegramDownloader:
         """
         Clean up downloaded files
         """
-        files_to_clean = [
-            download_result.video_path,
-            download_result.thumbnail_path,
-            f"{base_name}.webp"
-        ]
-        
-        for file_path in files_to_clean:
-            if file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    self.logger.error(f"Failed to remove {file_path}: {e}")
+        try:
+            base_name = download_result.video_path.rsplit('.', 1)[0]
+            
+            files_to_clean = [
+                download_result.video_path,
+                download_result.thumbnail_path
+            ]
+            
+            # Add possible thumbnail extensions
+            for ext in ['webp', 'jpg', 'png']:
+                thumbnail_path = f"{base_name}.{ext}"
+                if thumbnail_path != download_result.thumbnail_path:  # Avoid duplicate entries
+                    files_to_clean.append(thumbnail_path)
+            
+            for file_path in files_to_clean:
+                if file_path and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        self.logger.error(f"Failed to remove {file_path}: {e}")
+        except Exception as e:
+            self.logger.error(f"Cleanup error: {e}")
 
 
 def validate_format_selection(available_formats: Dict[str, str], selected_format: str) -> bool:
@@ -384,10 +403,34 @@ def main() -> None:
                 print("Warning: Invalid audio format, proceeding without separate audio")
                 audio_format = None
         
+        # Container format selection
+        valid_containers = ['mp4', 'mkv', 'webm']
+        print("\nAvailable container formats:")
+        for i, container in enumerate(valid_containers, 1):
+            print(f"{i}. {container}")
+        
+        container_format = 'mp4'  # Default
+        while True:
+            container_choice = input(f"Select container format [1-{len(valid_containers)}]").strip()
+            if not container_choice:
+                break
+            
+            try:
+                idx = int(container_choice) - 1
+                if 0 <= idx < len(valid_containers):
+                    container_format = valid_containers[idx]
+                    break
+                else:
+                    print(f"Please enter a number between 1 and {len(valid_containers)}")
+            except ValueError:
+                print("Please enter a valid number")
+        
+        print(f"Using container format: {container_format}")
+        
         # Download and upload
         print("\nDownloading video...")
         try:
-            result = downloader.download_video(url, video_format, audio_format)
+            result = downloader.download_video(url, video_format, audio_format, container_format)
             print(f"Downloaded: {result.video_title} ({result.duration}s)")
             
             print("Uploading to Telegram...")
