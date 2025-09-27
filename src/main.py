@@ -46,7 +46,6 @@ def main() -> None:
         print(f"Warning: Cookie file {cookies_file} not found")
         cookies_file = None
     
-    download_result = None # Initialize download_result
     try:
         downloader = YouTubeTelegramDownloader(cookies_file)
         uploader = TelegramUploader(bot_token, channel_id)
@@ -112,24 +111,26 @@ def main() -> None:
         # Download and upload
         print("\nDownloading video...")
         try:
-            download_result = downloader.download_video(url, video_format, audio_format, container_format)
-            print(f"Downloaded: {download_result.video_title} ({download_result.duration}s)")
+            result = downloader.download_video(url, video_format, audio_format, container_format)
+            print(f"Downloaded: {result.video_title} ({result.duration}s)")
 
             # Convert thumbnail after download
-            if download_result.thumbnail_path:
-                download_result.thumbnail_path = convert_thumbnail(download_result.thumbnail_path)
+            if result.thumbnail_path:
+                result.thumbnail_path = convert_thumbnail(result.thumbnail_path)
             
             print("Uploading to Telegram...")
-            uploader.upload_to_telegram(download_result)
+            uploader.upload_to_telegram(result)
             print("Upload successful!")
+            
+            print("Cleaning up...")
+            cleanup(result)
+            print("Done!")
             
         except Exception as e:
             print(f"ERROR: {e}")
-    finally:
-        if download_result:
-            print("Cleaning up...")
-            cleanup(download_result)
-            print("Done!")
+    
+    except Exception as e:
+        print(f"ERROR: {e}")
 
 
 if __name__ == '__main__':

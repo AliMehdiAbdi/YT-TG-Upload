@@ -1,6 +1,6 @@
 # YT-TG-Upload
 
-A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel.
+A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel. The codebase has been refactored into a modular structure for better maintainability.
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -13,6 +13,7 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 - 🖼️ Preserves video thumbnails
 - 📱 Uploads directly to Telegram channels
 - 🧹 Automatic cleanup of downloaded files
+- 🎞️ Supports various video container formats (MP4, MKV, WebM)
 
 ## 📋 Requirements
 
@@ -21,20 +22,61 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 - A Telegram Bot token
 - FFmpeg
 
+## 🔧 FFmpeg Installation
+
+FFmpeg is required for video and audio processing. Follow the instructions below to install it on your system.
+
+### Windows
+
+1.  **Download**: Go to the [FFmpeg website](https://ffmpeg.org/download.html) and download the latest Windows build.
+2.  **Extract**: Extract the downloaded archive to a directory (e.g., `C:\ffmpeg`).
+3.  **Add to PATH**: Add the `bin` directory inside your FFmpeg installation folder (e.g., `C:\ffmpeg\bin`) to your system's PATH environment variable. You can search for "Environment Variables" in Windows, then edit the "Path" variable under "System variables".
+4.  **Verify**: Open a new command prompt and type `ffmpeg -version`. If installed correctly, you should see FFmpeg version information.
+
+### macOS
+
+1.  **Homebrew**: The easiest way to install FFmpeg on macOS is using Homebrew. If you don't have Homebrew, install it by following instructions on [brew.sh](https://brew.sh/).
+2.  **Install**: Open your terminal and run:
+    ```bash
+    brew install ffmpeg
+    ```
+3.  **Verify**: Run `ffmpeg -version` in your terminal to confirm the installation.
+
+### Linux (Debian/Ubuntu)
+
+1.  **Update packages**: Open your terminal and run:
+    ```bash
+    sudo apt update
+    ```
+2.  **Install**: Install FFmpeg using apt:
+    ```bash
+    sudo apt install ffmpeg
+    ```
+3.  **Verify**: Run `ffmpeg -version` in your terminal to confirm the installation.
+
+### Other Linux Distributions
+
+Refer to your distribution's package manager documentation for FFmpeg installation. For example:
+
+- **Fedora**: `sudo dnf install ffmpeg`
+- **Arch Linux**: `sudo pacman -S ffmpeg`
+
 ## 🚀 Installation
 
 1. Clone this repository:
+
    ```bash
    git clone https://github.com/AliMehdiAbdi/YT-TG-Upload.git
    cd YT-TG-Upload
    ```
 
 2. Install the required dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file in the project directory with your Telegram credentials:
+3. Create a `.env` file in the project directory with your Telegram credentials. You can use `.env.example` as a template, but ensure you create a file named `.env`.
    ```
    TELEGRAM_API_ID=your_api_id
    TELEGRAM_API_HASH=your_api_hash
@@ -51,17 +93,20 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 
 ## 💻 Usage
 
-Run the script:
+Run the script from the project root:
+
 ```bash
 python main.py
 ```
 
 Follow the interactive prompts:
+
 1. Enter the YouTube URL
 2. Enter your Telegram channel ID (e.g., `-100XXXXXXXXXX`)
 3. Optionally provide a path to a Netscape-format cookies file
 4. Select from the available video and audio formats
-5. Wait for the download and upload to complete
+5. Select the desired video container format (MP4, MKV, WebM)
+6. Wait for the download and upload to complete
 
 ## 🍪 Using Cookies for Private Videos
 
@@ -70,6 +115,7 @@ For private or age-restricted videos, you can use a cookies file:
 ### Getting Cookies in Netscape Format
 
 #### Chrome:
+
 1. Install the [Get cookies.txt](https://chrome.google.com/webstore/detail/get-cookiestxt/bgaddhkoddajcdgocldbbfleckgcbcid) extension
 2. Go to [YouTube](https://www.youtube.com) and make sure you're logged in
 3. Click on the extension icon while on YouTube
@@ -77,6 +123,7 @@ For private or age-restricted videos, you can use a cookies file:
 5. Save the file in a secure location
 
 #### Firefox:
+
 1. Install the [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/) add-on
 2. Go to [YouTube](https://www.youtube.com) and make sure you're logged in
 3. Click on the add-on icon in your browser toolbar
@@ -84,19 +131,35 @@ For private or age-restricted videos, you can use a cookies file:
 5. Save the file in a secure location
 
 #### Using the Cookies File:
+
 1. When prompted by the script, enter the full path to your saved cookies file
 2. The cookies will be used to authenticate your YouTube requests
 3. Keep your cookies file secure as it contains sensitive session information
 
-## 📚 Class Reference
+## 📁 Project Structure
 
-The main `YouTubeTelegramDownloader` class has these primary methods:
-
-- `validate_youtube_url(url)`: Validates YouTube URLs
-- `get_video_qualities(url)`: Fetches available video and audio formats
-- `download_video(url, video_format, audio_format)`: Downloads the video
-- `upload_to_telegram(download_result)`: Uploads the video to Telegram
-- `cleanup(download_result)`: Removes downloaded files
+```
+YT-TG-Upload/
+├── main.py
+├── src/
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   └── downloader.py
+│   ├── telegram/
+│   │   ├── __init__.py
+│   │   └── uploader.py
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── validators.py
+│   │   └── helpers.py
+│   └── models.py
+├── .env.example
+├── .gitignore
+├── LICENSE
+├── README.md
+├── requirements.txt
+```
 
 ## 🛠️ Troubleshooting
 
