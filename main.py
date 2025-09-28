@@ -93,7 +93,7 @@ def main() -> None:
         
         container_format = 'mp4'  # Default
         while True:
-            container_choice = input(f"Select container format [1-{len(valid_containers)}]").strip()
+            container_choice = input(f"Select container format [1-{len(valid_containers)}]: ").strip()
             if not container_choice:
                 break
             
@@ -103,9 +103,9 @@ def main() -> None:
                     container_format = valid_containers[idx]
                     break
                 else:
-                    print(f"Please enter a number between 1 and {len(valid_containers)}")
+                    print(f"Please enter a number between 1 and {len(valid_containers)}: ")
             except ValueError:
-                print("Please enter a valid number")
+                print("Please enter a valid number: ")
         
         print(f"Using container format: {container_format}")
         
