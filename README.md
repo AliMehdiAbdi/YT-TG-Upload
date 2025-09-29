@@ -1,6 +1,6 @@
 # YT-TG-Upload
 
-A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel. The codebase has been refactored into a modular structure for better maintainability.
+A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel.
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -14,6 +14,7 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 - 📱 Uploads directly to Telegram channels
 - 🧹 Automatic cleanup of downloaded files
 - 🎞️ Supports various video container formats (MP4, MKV, WebM)
+- 🎵 Supports downloading of entire YouTube playlists
 
 ## 📋 Requirements
 
@@ -102,11 +103,10 @@ python main.py
 Follow the interactive prompts:
 
 1. Enter the YouTube URL
-2. Enter your Telegram channel ID (e.g., `-100XXXXXXXXXX`)
-3. Optionally provide a path to a Netscape-format cookies file
-4. Select from the available video and audio formats
-5. Select the desired video container format (MP4, MKV, WebM)
-6. Wait for the download and upload to complete
+2. Optionally provide a path to a Netscape-format cookies file
+3. Select from the available video and audio formats
+4. Select the desired video container format (MP4, MKV, WebM)
+5. Wait for the download and upload to complete
 
 ## 🍪 Using Cookies for Private Videos
 
