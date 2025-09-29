@@ -63,27 +63,50 @@ def main() -> None:
             return
         
         print("\nAvailable Video Formats:")
-        for fmt_id, details in formats['video_formats'].items():
-            print(f"{fmt_id}: {details}")
+        video_options = list(formats['video_formats'].items())
+        for i, (fmt_id, details) in enumerate(video_options, 1):
+            print(f"{i}. {fmt_id}: {details}")
         
         print("\nAvailable Audio Formats:" if formats['audio_formats'] else "\nNo separate audio formats found")
-        for fmt_id, details in formats['audio_formats'].items():
-            print(f"{fmt_id}: {details}")
         
         # Get video format
         while True:
-            video_format = input("\nEnter video format ID: ").strip()
-            if validate_format_selection(formats['video_formats'], video_format):
-                break
-            print("Invalid format ID, please try again")
+            try:
+                video_choice = input(f"\nEnter video format (1-{len(video_options)}): ").strip()
+                if not video_choice:
+                    print("Please enter a number.")
+                    continue
+                idx = int(video_choice) - 1
+                if 0 <= idx < len(video_options):
+                    video_format = video_options[idx][0]  # Get the fmt_id
+                    print(f"Selected: {video_format}")
+                    break
+                else:
+                    print(f"Please enter a number between 1 and {len(video_options)}")
+            except ValueError:
+                print("Please enter a valid number.")
         
         # Get optional audio format
         audio_format = None
         if formats['audio_formats']:
-            audio_format = input("Enter audio format ID (optional, press Enter to skip): ").strip()
-            if audio_format and not validate_format_selection(formats['audio_formats'], audio_format):
-                print("Warning: Invalid audio format, proceeding without separate audio")
-                audio_format = None
+            audio_options = list(formats['audio_formats'].items())
+            for i, (fmt_id, details) in enumerate(audio_options, 1):
+                print(f"{i}. {fmt_id}: {details}")
+            while True:
+                try:
+                    audio_choice = input(f"Enter audio format ID (1-{len(audio_options)}) or press Enter to skip: ").strip()
+                    if not audio_choice:
+                        break  # Skip audio
+                    idx = int(audio_choice) - 1
+                    if 0 <= idx < len(audio_options):
+                        audio_format = audio_options[idx][0]  # Get the fmt_id
+                        print(f"Selected audio: {audio_format}")
+                        break
+                    else:
+                        print(f"Please enter a number between 1 and {len(audio_options)} or Enter to skip")
+                except ValueError:
+                    if audio_choice:  # Only warn if they entered something
+                        print("Please enter a valid number or Enter to skip.")
         
         # Container format selection
         valid_containers = ['mp4', 'mkv', 'webm']
