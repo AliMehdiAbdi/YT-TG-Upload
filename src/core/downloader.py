@@ -143,3 +143,110 @@ class YouTubeTelegramDownloader:
         except Exception as e:
             self.logger.error(f"Download failed: {e}")
             raise RuntimeError(f"Failed to download video: {e}")
+
+    def is_playlist(self, url: str) -> bool:
+        """
+        Check if the URL is a YouTube playlist with more than one video.
+        
+        :param url: YouTube URL
+        :return: True if playlist
+        """
+        if not validate_youtube_url(url):
+            return False
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+        }
+        if self.cookies_file:
+            ydl_opts['cookiefile'] = self.cookies_file
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                entries = info.get('entries', [])
+                return bool(entries and len(entries) > 1)
+        except Exception:
+            return False
+
+    def get_playlist_entries(self, url: str) -> List[Dict[str, str]]:
+        """
+        Extract flat entries from a YouTube playlist.
+        
+        :param url: Playlist URL
+        :return: List of {'title': str, 'url': str}
+        :raises RuntimeError: If extraction fails
+        """
+        if not validate_youtube_url(url):
+            raise ValueError(f"Invalid YouTube URL: {url}")
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,  # Faster extraction without full video info
+        }
+        if self.cookies_file:
+            ydl_opts['cookiefile'] = self.cookies_file
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                entries = info.get('entries', [])
+                if not entries:
+                    raise ValueError("No entries found in the provided URL")
+                
+                playlist_entries = []
+                for entry in entries:
+                    if entry and entry.get('url') and entry.get('title'):
+                        playlist_entries.append({
+                            'title': entry['title'],
+                            'url': entry['url']
+                        })
+                if not playlist_entries:
+                    raise ValueError("No valid entries extracted from playlist")
+                return playlist_entries
+        except yt_dlp.utils.DownloadError as e:
+            self.logger.error(f"Playlist extraction error: {e}")
+            raise RuntimeError(f"Failed to extract playlist entries: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error extracting playlist: {e}")
+            raise RuntimeError(f"Failed to extract playlist: {e}")
+
+    def get_estimated_size(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4') -> float:
+        """
+        Estimate the download size for specified formats in MB.
+        
+        :param url: Video URL
+        :param video_format: Video format ID
+        :param audio_format: Optional audio format ID
+        :param container_format: Container (not used for estimation)
+        :return: Estimated size in MB (approximate)
+        """
+        if not validate_youtube_url(url):
+            raise ValueError(f"Invalid YouTube URL: {url}")
+        
+        format_spec = f'{video_format}+{audio_format}' if audio_format else video_format
+        
+        ydl_opts = {
+            'format': format_spec,
+            'quiet': True,
+            'no_warnings': True,
+        }
+        if self.cookies_file:
+            ydl_opts['cookiefile'] = self.cookies_file
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                total_size_bytes = 0
+                for fmt in info.get('formats', []):
+                    if fmt.get('format_id') == video_format:
+                        total_size_bytes += fmt.get('filesize') or fmt.get('filesize_approx', 0)
+                    if audio_format and fmt.get('format_id') == audio_format:
+                        total_size_bytes += fmt.get('filesize') or fmt.get('filesize_approx', 0)
+                
+                return total_size_bytes / (1024 * 1024) if total_size_bytes > 0 else 0
+        except Exception as e:
+            self.logger.warning(f"Size estimation failed for {url}: {e}")
+            return 0  # Don't skip if estimation fails
