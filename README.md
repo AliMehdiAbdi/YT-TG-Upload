@@ -136,31 +136,6 @@ For private or age-restricted videos, you can use a cookies file:
 2. The cookies will be used to authenticate your YouTube requests
 3. Keep your cookies file secure as it contains sensitive session information
 
-## 📁 Project Structure
-
-```
-YT-TG-Upload/
-├── main.py
-├── src/
-│   ├── __init__.py
-│   ├── core/
-│   │   ├── __init__.py
-│   │   └── downloader.py
-│   ├── telegram/
-│   │   ├── __init__.py
-│   │   └── uploader.py
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   ├── validators.py
-│   │   └── helpers.py
-│   └── models.py
-├── .env.example
-├── .gitignore
-├── LICENSE
-├── README.md
-├── requirements.txt
-```
-
 ## 🛠️ Troubleshooting
 
 - **Error: Required environment variables not set** - Make sure your `.env` file is properly configured
