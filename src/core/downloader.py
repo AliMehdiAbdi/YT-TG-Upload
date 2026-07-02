@@ -40,8 +40,8 @@ class YouTubeTelegramDownloader:
             raise ValueError(f"Invalid YouTube URL: {url}")
         
         ydl_opts = {
-            'listformats': True,
             'quiet': True,
+            'no_warnings': False,
         }
         
         if self.cookies_file:
@@ -68,6 +68,12 @@ class YouTubeTelegramDownloader:
                         audio_formats[fmt['format_id']] = (
                             f"{fmt.get('abr', 0)}kbps ({fmt['ext']})"
                         )
+                
+                if not video_formats:
+                    raise RuntimeError(
+                        "No video formats found. This usually means yt-dlp is outdated. "
+                        "Run 'pip install -U yt-dlp' to update."
+                    )
                 
                 return {
                     'video_formats': video_formats,
