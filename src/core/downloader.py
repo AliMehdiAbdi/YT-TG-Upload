@@ -1,4 +1,5 @@
 import os
+import shutil
 import logging
 from typing import Optional, Dict, List, Union
 from dataclasses import dataclass
@@ -27,6 +28,24 @@ class YouTubeTelegramDownloader:
         )
         self.logger = logging.getLogger(__name__)
 
+    def _base_opts(self, **extra) -> dict:
+        """
+        Build base yt-dlp options with cookies and JS runtime detection.
+        """
+        opts = {}
+        if self.cookies_file:
+            opts['cookiefile'] = self.cookies_file
+        
+        # Auto-detect JS runtime for YouTube EJS signature solving
+        if shutil.which('deno'):
+            opts['js_runtimes'] = 'deno'
+            opts['remote_components'] = 'ejs:npm'
+        elif shutil.which('node'):
+            opts['js_runtimes'] = 'node'
+        
+        opts.update(extra)
+        return opts
+
     def get_video_qualities(self, url: str) -> VideoInfo:
         """
         Fetch available video and audio qualities
@@ -39,13 +58,7 @@ class YouTubeTelegramDownloader:
         if not validate_youtube_url(url):
             raise ValueError(f"Invalid YouTube URL: {url}")
         
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': False,
-        }
-        
-        if self.cookies_file:
-            ydl_opts['cookiefile'] = self.cookies_file
+        ydl_opts = self._base_opts(quiet=True, no_warnings=False)
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -111,16 +124,13 @@ class YouTubeTelegramDownloader:
             self.logger.warning(f"Invalid container format: {container_format}. Using mp4 instead.")
             container_format = 'mp4'
         
-        ydl_opts = {
-            'format': f'{video_format}+{audio_format}' if audio_format else video_format,
-            'outtmpl': '%(title)s.%(ext)s',
-            'writethumbnail': True,
-            'no_warnings': False,
-            'merge_output_format': container_format,
-        }
-        
-        if self.cookies_file:
-            ydl_opts['cookiefile'] = self.cookies_file
+        ydl_opts = self._base_opts(
+            format=f'{video_format}+{audio_format}' if audio_format else video_format,
+            outtmpl='%(title)s.%(ext)s',
+            writethumbnail=True,
+            no_warnings=False,
+            merge_output_format=container_format,
+        )
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -160,12 +170,7 @@ class YouTubeTelegramDownloader:
         if not validate_youtube_url(url):
             return False
         
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-        }
-        if self.cookies_file:
-            ydl_opts['cookiefile'] = self.cookies_file
+        ydl_opts = self._base_opts(quiet=True, no_warnings=True)
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -186,13 +191,11 @@ class YouTubeTelegramDownloader:
         if not validate_youtube_url(url):
             raise ValueError(f"Invalid YouTube URL: {url}")
         
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': True,  # Faster extraction without full video info
-        }
-        if self.cookies_file:
-            ydl_opts['cookiefile'] = self.cookies_file
+        ydl_opts = self._base_opts(
+            quiet=True,
+            no_warnings=True,
+            extract_flat=True,  # Faster extraction without full video info
+        )
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -233,13 +236,11 @@ class YouTubeTelegramDownloader:
         
         format_spec = f'{video_format}+{audio_format}' if audio_format else video_format
         
-        ydl_opts = {
-            'format': format_spec,
-            'quiet': True,
-            'no_warnings': True,
-        }
-        if self.cookies_file:
-            ydl_opts['cookiefile'] = self.cookies_file
+        ydl_opts = self._base_opts(
+            format=format_spec,
+            quiet=True,
+            no_warnings=True,
+        )
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
