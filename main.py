@@ -117,6 +117,12 @@ def main() -> None:
         else:
             selected_entries = None
             max_size_mb = 2048  # Default for single, but with warning
+            print("Fetching Available Formats... This may take a moment.")
+            try:
+                formats = downloader.get_video_qualities(url)
+            except Exception as e:
+                print(f"ERROR: Failed to fetch video formats: {e}")
+                return
         
         # Common format selection (for both single and playlist)
         print("\nAvailable Video Formats:")
