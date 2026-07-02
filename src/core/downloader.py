@@ -38,10 +38,10 @@ class YouTubeTelegramDownloader:
         
         # Auto-detect JS runtime for YouTube EJS signature solving
         if shutil.which('deno'):
-            opts['js_runtimes'] = ['deno']
+            opts['js_runtimes'] = {'deno': {}}
             opts['remote_components'] = ['ejs:npm']
         elif shutil.which('node'):
-            opts['js_runtimes'] = ['node']
+            opts['js_runtimes'] = {'node': {}}
         
         opts.update(extra)
         return opts
