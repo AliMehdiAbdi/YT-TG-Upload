@@ -81,13 +81,25 @@ def display_video_formats(formats: VideoInfo) -> tuple:
     v_table.add_column("Size", justify="right")
     v_table.add_column("Note", style="bold green")
     
+    def get_clean_note(vf):
+        note = vf.get('format_note', '').strip()
+        if not note: return ''
+        nl = note.lower()
+        res = str(vf['resolution'])
+        fps = str(int(vf['fps'] or 0))
+        test_str = nl.replace(res, '').replace('p', '').replace(fps, '').replace('fps', '').strip()
+        return '' if not test_str else note
+
     # Deduplicate video formats visually
     unique_video_formats = []
     seen_video = set()
     for vf in video_formats:
-        sig = (vf['resolution'], vf['fps'], vf['vcodec'], vf['ext'], vf.get('format_note', ''))
+        clean_note = get_clean_note(vf)
+        sig = (vf['resolution'], vf['fps'], vf['vcodec'], vf['ext'], clean_note)
         if sig not in seen_video:
             seen_video.add(sig)
+            # Store the clean note for display
+            vf['display_note'] = clean_note
             unique_video_formats.append(vf)
             
     for i, vf in enumerate(unique_video_formats, 1):
@@ -96,8 +108,8 @@ def display_video_formats(formats: VideoInfo) -> tuple:
             quality += f"@{vf['fps']}fps"
         size_str = format_size(vf['size_mb'])
         marker = "★ Recommended" if i == 1 else ""
-        if vf.get('format_note'):
-            marker = f"{marker} [{vf['format_note']}]".strip()
+        if vf.get('display_note'):
+            marker = f"{marker} [{vf['display_note']}]".strip()
         v_table.add_row(str(i), quality, vf['vcodec'], vf['ext'], size_str, marker)
     
     console.print(v_table)
