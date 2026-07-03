@@ -98,29 +98,11 @@ class YouTubeTelegramDownloader:
                             'acodec': acodec.split('.')[0],
                         })
                 
-                # --- Group video formats by (resolution, fps) ---
-                # Keep the best codec per group: prefer avc1/h264 (widest compatibility),
-                # then largest size as a proxy for quality.
-                groups: Dict[tuple, ParsedVideoFormat] = {}
-                # Codec priority: lower = better (prefer h264/avc1 for compatibility)
+                # Sort video: highest resolution first, then fps, then preferred codec
                 codec_priority = {'avc1': 0, 'h264': 0, 'av01': 1, 'vp9': 2, 'vp09': 2}
-                
-                for vf in raw_video:
-                    key = (vf['resolution'], vf['fps'])
-                    existing = groups.get(key)
-                    if existing is None:
-                        groups[key] = vf
-                    else:
-                        # Compare: prefer better codec priority, then larger size
-                        new_prio = codec_priority.get(vf['vcodec'], 99)
-                        old_prio = codec_priority.get(existing['vcodec'], 99)
-                        if new_prio < old_prio or (new_prio == old_prio and vf['size_mb'] > existing['size_mb']):
-                            groups[key] = vf
-                
-                # Sort: highest resolution first, then highest fps
                 video_formats = sorted(
-                    groups.values(),
-                    key=lambda f: (f['resolution'], f['fps']),
+                    raw_video,
+                    key=lambda f: (f['resolution'], f['fps'], -codec_priority.get(f['vcodec'], 99)),
                     reverse=True
                 )
                 
@@ -130,15 +112,6 @@ class YouTubeTelegramDownloader:
                     key=lambda f: f['bitrate'],
                     reverse=True
                 )
-                # Deduplicate audio by bitrate (keep first = best codec naturally)
-                seen_bitrates = set()
-                deduped_audio: List[ParsedAudioFormat] = []
-                for af in audio_formats:
-                    br_key = round(af['bitrate'])
-                    if br_key not in seen_bitrates:
-                        seen_bitrates.add(br_key)
-                        deduped_audio.append(af)
-                audio_formats = deduped_audio
                 
                 if not video_formats:
                     raise RuntimeError(
