@@ -162,7 +162,8 @@ class YouTubeTelegramDownloader:
             format=f'{video_format}+{audio_format}' if audio_format else video_format,
             outtmpl='%(title)s.%(ext)s',
             writethumbnail=True,
-            no_warnings=False,
+            quiet=True,
+            no_warnings=True,
             merge_output_format=container_format,
         )
         
