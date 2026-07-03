@@ -164,6 +164,7 @@ class YouTubeTelegramDownloader:
             writethumbnail=True,
             quiet=True,
             no_warnings=True,
+            noprogress=True,
             merge_output_format=container_format,
         )
         
