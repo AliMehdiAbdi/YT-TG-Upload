@@ -87,6 +87,7 @@ class YouTubeTelegramDownloader:
                             'ext': fmt.get('ext', '?'),
                             'vcodec': vcodec.split('.')[0],  # e.g. 'avc1.64001f' -> 'avc1'
                             'size_mb': round(size_mb, 1),
+                            'format_note': fmt.get('format_note', ''),
                         })
                     
                     # Audio-only streams
@@ -96,6 +97,7 @@ class YouTubeTelegramDownloader:
                             'bitrate': fmt.get('abr', 0) or 0,
                             'ext': fmt.get('ext', '?'),
                             'acodec': acodec.split('.')[0],
+                            'format_note': fmt.get('format_note', ''),
                         })
                 
                 # Sort video: highest resolution first, then fps, then preferred codec

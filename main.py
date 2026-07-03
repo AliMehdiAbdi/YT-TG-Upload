@@ -75,12 +75,23 @@ def display_video_formats(formats: VideoInfo) -> tuple:
     v_table.add_column("Size", justify="right")
     v_table.add_column("Note", style="bold green")
     
-    for i, vf in enumerate(video_formats, 1):
+    # Deduplicate video formats visually
+    unique_video_formats = []
+    seen_video = set()
+    for vf in video_formats:
+        sig = (vf['resolution'], vf['fps'], vf['vcodec'], vf['ext'], vf.get('format_note', ''))
+        if sig not in seen_video:
+            seen_video.add(sig)
+            unique_video_formats.append(vf)
+            
+    for i, vf in enumerate(unique_video_formats, 1):
         quality = f"{vf['resolution']}p"
         if vf['fps'] and vf['fps'] > 0:
             quality += f"@{vf['fps']}fps"
         size_str = format_size(vf['size_mb'])
         marker = "★ Recommended" if i == 1 else ""
+        if vf.get('format_note'):
+            marker = f"{marker} [{vf['format_note']}]".strip()
         v_table.add_row(str(i), quality, vf['vcodec'], vf['ext'], size_str, marker)
     
     console.print(v_table)
@@ -90,15 +101,15 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         video_choice = Prompt.ask("Select video format [dim](Enter = recommended)[/dim]", default="1", show_default=False)
         try:
             idx = int(video_choice) - 1
-            if 0 <= idx < len(video_formats):
-                selected_video = video_formats[idx]
+            if 0 <= idx < len(unique_video_formats):
+                selected_video = unique_video_formats[idx]
                 quality = f"{selected_video['resolution']}p"
                 if selected_video['fps']:
                     quality += f"@{selected_video['fps']}fps"
                 console.print(f"[green]✓ Selected Video:[/green] {quality} ({selected_video['vcodec']}, {format_size(selected_video['size_mb'])})")
                 break
             else:
-                console.print(f"[red]Please enter a number between 1 and {len(video_formats)}[/red]")
+                console.print(f"[red]Please enter a number between 1 and {len(unique_video_formats)}[/red]")
         except ValueError:
             console.print("[red]Please enter a valid number.[/red]")
             
@@ -113,9 +124,20 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         a_table.add_column("Ext", style="yellow")
         a_table.add_column("Note", style="bold green")
         
-        for i, af in enumerate(audio_formats, 1):
+        # Deduplicate audio formats visually
+        unique_audio_formats = []
+        seen_audio = set()
+        for af in audio_formats:
+            sig = (af['bitrate'], af['acodec'], af['ext'], af.get('format_note', ''))
+            if sig not in seen_audio:
+                seen_audio.add(sig)
+                unique_audio_formats.append(af)
+        
+        for i, af in enumerate(unique_audio_formats, 1):
             bitrate_str = f"{af['bitrate']:.0f} kbps"
             marker = "★ Recommended" if i == 1 else ""
+            if af.get('format_note'):
+                marker = f"{marker} [{af['format_note']}]".strip()
             a_table.add_row(str(i), bitrate_str, af['acodec'], af['ext'], marker)
         
         console.print(a_table)
@@ -124,8 +146,8 @@ def display_video_formats(formats: VideoInfo) -> tuple:
             audio_choice = Prompt.ask("Select audio format [dim](Enter = recommended)[/dim]", default="1", show_default=False)
             try:
                 idx = int(audio_choice) - 1
-                if 0 <= idx < len(audio_formats):
-                    selected_audio = audio_formats[idx]
+                if 0 <= idx < len(unique_audio_formats):
+                    selected_audio = unique_audio_formats[idx]
                     console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']})")
                     break
                 else:

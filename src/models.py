@@ -20,12 +20,14 @@ class ParsedVideoFormat(TypedDict):
     ext: str            # e.g. "mp4"
     vcodec: str         # e.g. "avc1" or "vp9"
     size_mb: float      # estimated size, 0 if unknown
+    format_note: str
 
 class ParsedAudioFormat(TypedDict):
     format_id: str
     bitrate: float      # kbps
     ext: str
     acodec: str         # e.g. "opus" or "mp4a"
+    format_note: str
 
 class VideoInfo(TypedDict):
     video_formats: List[ParsedVideoFormat]
