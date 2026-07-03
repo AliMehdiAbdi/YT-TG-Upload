@@ -39,6 +39,11 @@ def make_download_hook(progress: Progress, task_id: TaskID):
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
             downloaded = d.get('downloaded_bytes', 0)
             
+            speed = d.get('_speed_str', '').strip()
+            eta = d.get('_eta_str', '').strip()
+            if eta:
+                eta = f"ETA {eta}"
+            
             task = progress.tasks[task_id]
             if downloaded < task.completed:
                 # new stream (e.g. video finished, audio started)
@@ -46,11 +51,12 @@ def make_download_hook(progress: Progress, task_id: TaskID):
             
             if total and task.total != total:
                 progress.update(task_id, total=total)
-            progress.update(task_id, completed=downloaded)
+            progress.update(task_id, completed=downloaded, yt_speed=speed, yt_eta=eta)
         elif d['status'] == 'finished':
             task = progress.tasks[task_id]
             if task.total and task.completed < task.total:
                 progress.update(task_id, completed=task.total)
+            progress.update(task_id, yt_speed="", yt_eta="")
     return hook
 
 def make_upload_progress(progress: Progress, task_id: TaskID):
@@ -151,7 +157,7 @@ def display_video_formats(formats: VideoInfo) -> tuple:
                     console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']})")
                     break
                 else:
-                    console.print(f"[red]Please enter a number between 1 and {len(audio_formats)}[/red]")
+                    console.print(f"[red]Please enter a number between 1 and {len(unique_audio_formats)}[/red]")
             except ValueError:
                 console.print("[red]Please enter a valid number.[/red]")
     else:
@@ -168,12 +174,12 @@ def download_with_progress(downloader, url, video_format, audio_format, containe
         BarColumn(),
         "[progress.percentage]{task.percentage:>3.0f}%",
         DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeRemainingColumn(),
+        TextColumn("[cyan]{task.fields[yt_speed]}"),
+        TextColumn("[yellow]{task.fields[yt_eta]}"),
         console=console,
     )
     with progress:
-        task_id = progress.add_task("[cyan]↓ Video", total=None)
+        task_id = progress.add_task("[cyan]↓ Video", total=None, yt_speed="", yt_eta="")
         result = downloader.download_video(
             url, video_format, audio_format, container_format,
             progress_hook=make_download_hook(progress, task_id)
