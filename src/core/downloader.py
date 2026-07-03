@@ -100,18 +100,18 @@ class YouTubeTelegramDownloader:
                             'format_note': fmt.get('format_note', ''),
                         })
                 
-                # Sort video: highest resolution first, then fps, then preferred codec
+                # Sort video: highest resolution first, then fps, preferred codec, and KNOWN size over unknown
                 codec_priority = {'avc1': 0, 'h264': 0, 'av01': 1, 'vp9': 2, 'vp09': 2}
                 video_formats = sorted(
                     raw_video,
-                    key=lambda f: (f['resolution'], f['fps'], -codec_priority.get(f['vcodec'], 99)),
+                    key=lambda f: (f['resolution'], f['fps'], -codec_priority.get(f['vcodec'], 99), f['size_mb'] > 0, f['size_mb']),
                     reverse=True
                 )
                 
-                # Sort audio: highest bitrate first
+                # Sort audio: KNOWN bitrate first, then highest bitrate
                 audio_formats = sorted(
                     raw_audio,
-                    key=lambda f: f['bitrate'],
+                    key=lambda f: (f['bitrate'] > 0, f['bitrate']),
                     reverse=True
                 )
                 
