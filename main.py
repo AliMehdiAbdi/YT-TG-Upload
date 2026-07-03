@@ -25,11 +25,18 @@ logging.basicConfig(
 def make_download_hook(pbar: tqdm):
     """
     Create a yt-dlp progress hook that feeds a tqdm progress bar.
+    Handles multi-stream downloads (video + audio downloaded separately).
     """
     def hook(d):
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
             downloaded = d.get('downloaded_bytes', 0)
+            
+            # Detect new stream starting (downloaded bytes dropped below current position)
+            if downloaded < pbar.n:
+                pbar.reset()
+                pbar.set_description('  ↓ Audio      ')
+            
             if total and pbar.total != total:
                 pbar.total = total
                 pbar.refresh()
@@ -134,7 +141,7 @@ def download_with_progress(downloader, url, video_format, audio_format, containe
     Returns DownloadResult.
     """
     with tqdm(unit='B', unit_scale=True, unit_divisor=1024,
-              desc='  ↓ Downloading', miniters=1,
+              desc='  ↓ Video      ', miniters=1,
               bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{rate_fmt}, ETA {remaining}]') as pbar:
         result = downloader.download_video(
             url, video_format, audio_format, container_format,
