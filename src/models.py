@@ -13,9 +13,23 @@ class AudioFormat(TypedDict):
     bitrate: float
     ext: str
 
+class ParsedVideoFormat(TypedDict):
+    format_id: str
+    resolution: int     # e.g. 1080
+    fps: int            # e.g. 30
+    ext: str            # e.g. "mp4"
+    vcodec: str         # e.g. "avc1" or "vp9"
+    size_mb: float      # estimated size, 0 if unknown
+
+class ParsedAudioFormat(TypedDict):
+    format_id: str
+    bitrate: float      # kbps
+    ext: str
+    acodec: str         # e.g. "opus" or "mp4a"
+
 class VideoInfo(TypedDict):
-    video_formats: Dict[str, str]
-    audio_formats: Dict[str, str]
+    video_formats: List[ParsedVideoFormat]
+    audio_formats: List[ParsedAudioFormat]
     title: str
     duration: int
     thumbnail: Optional[str]
@@ -26,3 +40,4 @@ class DownloadResult:
     thumbnail_path: Optional[str]
     video_title: str
     duration: int
+

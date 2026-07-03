@@ -78,3 +78,17 @@ TELEGRAM_CHANNEL_ID=-100XXXXXXXXXX # Your channel ID (numeric, no quotes)
 Replace the values with your actual Telegram API credentials.
 You can obtain them from https://my.telegram.org/apps
 """
+
+def format_size(size_mb: float) -> str:
+    """
+    Convert a size in MB to a human-readable string.
+    
+    :param size_mb: Size in megabytes
+    :return: Formatted string (e.g. '320 MB', '1.2 GB', or 'unknown')
+    """
+    if size_mb <= 0:
+        return "unknown"
+    if size_mb >= 1024:
+        return f"{size_mb / 1024:.1f} GB"
+    return f"{size_mb:.0f} MB"
+

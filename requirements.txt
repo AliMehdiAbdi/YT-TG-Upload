@@ -3,3 +3,4 @@ pyrofork==2.2.11
 tgcrypto
 yt-dlp
 pillow
+tqdm

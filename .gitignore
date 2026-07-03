@@ -1,2 +1,20 @@
 .env
 .cursorignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Pyrogram session files
+*.session
+*.session-journal
+
+# Downloaded media (transient)
+*.mp4
+*.mkv
+*.webm
+*.webp
+*.png
+*.jpg
+*.jpeg

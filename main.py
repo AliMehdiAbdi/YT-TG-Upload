@@ -1,17 +1,159 @@
 import os
-from typing import Dict, List
+import logging
+from typing import Dict, List, Callable, Optional
 
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 from src.core.downloader import YouTubeTelegramDownloader
 from src.telegram.uploader import TelegramUploader
 from src.utils.validators import validate_youtube_url, validate_format_selection
-from src.utils.helpers import get_env_setup_instructions, cleanup, convert_thumbnail
+from src.utils.helpers import get_env_setup_instructions, cleanup, convert_thumbnail, format_size
 from src.models import VideoInfo, DownloadResult
 
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Configure logging once at the top level
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+
+def make_download_hook(pbar: tqdm):
+    """
+    Create a yt-dlp progress hook that feeds a tqdm progress bar.
+    """
+    def hook(d):
+        if d['status'] == 'downloading':
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            downloaded = d.get('downloaded_bytes', 0)
+            if total and pbar.total != total:
+                pbar.total = total
+                pbar.refresh()
+            pbar.update(downloaded - pbar.n)
+        elif d['status'] == 'finished':
+            if pbar.total and pbar.n < pbar.total:
+                pbar.update(pbar.total - pbar.n)
+    return hook
+
+
+def make_upload_progress(pbar: tqdm):
+    """
+    Create a Pyrogram upload progress callback that feeds a tqdm progress bar.
+    """
+    def callback(current, total):
+        if pbar.total != total:
+            pbar.total = total
+            pbar.refresh()
+        pbar.update(current - pbar.n)
+    return callback
+
+
+def display_video_formats(formats: VideoInfo) -> tuple:
+    """
+    Display available formats in a clean, grouped table and handle user selection.
+    Returns (video_format_id, audio_format_id) where audio may be None.
+    """
+    video_formats = formats['video_formats']
+    audio_formats = formats['audio_formats']
+    
+    # --- Video format table ---
+    print("\n  Available Video Formats:")
+    print(f"  {'#':>3}   {'Quality':<14} {'Codec':<7} {'Ext':<5} {'Size':<10}")
+    print(f"  {'─'*3}   {'─'*14} {'─'*7} {'─'*5} {'─'*10}")
+    
+    for i, vf in enumerate(video_formats, 1):
+        quality = f"{vf['resolution']}p"
+        if vf['fps'] and vf['fps'] > 0:
+            quality += f"@{vf['fps']}fps"
+        size_str = format_size(vf['size_mb'])
+        marker = "  ★ Recommended" if i == 1 else ""
+        print(f"  {i:>3}.  {quality:<14} {vf['vcodec']:<7} {vf['ext']:<5} {size_str:<10}{marker}")
+    
+    # Video selection (Enter = recommended)
+    while True:
+        try:
+            video_choice = input(f"\n  Select video format [1-{len(video_formats)}] (Enter = recommended): ").strip()
+            if not video_choice:
+                idx = 0  # Recommended = first
+            else:
+                idx = int(video_choice) - 1
+            if 0 <= idx < len(video_formats):
+                selected_video = video_formats[idx]
+                quality = f"{selected_video['resolution']}p"
+                if selected_video['fps']:
+                    quality += f"@{selected_video['fps']}fps"
+                print(f"  ✓ Video: {quality} ({selected_video['vcodec']}, {format_size(selected_video['size_mb'])})")
+                break
+            else:
+                print(f"  Please enter a number between 1 and {len(video_formats)}")
+        except ValueError:
+            print("  Please enter a valid number.")
+    
+    # --- Audio format table ---
+    selected_audio = None
+    if audio_formats:
+        print(f"\n  Available Audio Formats:")
+        print(f"  {'#':>3}   {'Bitrate':<12} {'Codec':<7} {'Ext':<5}")
+        print(f"  {'─'*3}   {'─'*12} {'─'*7} {'─'*5}")
+        
+        for i, af in enumerate(audio_formats, 1):
+            bitrate_str = f"{af['bitrate']:.0f} kbps"
+            marker = "  ★ Recommended" if i == 1 else ""
+            print(f"  {i:>3}.  {bitrate_str:<12} {af['acodec']:<7} {af['ext']:<5}{marker}")
+        
+        while True:
+            try:
+                audio_choice = input(f"\n  Select audio format [1-{len(audio_formats)}] (Enter = recommended): ").strip()
+                if not audio_choice:
+                    idx = 0  # Recommended = first (highest bitrate)
+                else:
+                    idx = int(audio_choice) - 1
+                if 0 <= idx < len(audio_formats):
+                    selected_audio = audio_formats[idx]
+                    print(f"  ✓ Audio: {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']})")
+                    break
+                else:
+                    print(f"  Please enter a number between 1 and {len(audio_formats)}")
+            except ValueError:
+                print("  Please enter a valid number.")
+    else:
+        print("\n  No separate audio formats found (audio may be included in video stream).")
+    
+    video_format_id = selected_video['format_id']
+    audio_format_id = selected_audio['format_id'] if selected_audio else None
+    return video_format_id, audio_format_id
+
+
+def download_with_progress(downloader, url, video_format, audio_format, container_format):
+    """
+    Download a video with a tqdm progress bar.
+    Returns DownloadResult.
+    """
+    with tqdm(unit='B', unit_scale=True, unit_divisor=1024,
+              desc='  ↓ Downloading', miniters=1,
+              bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{rate_fmt}, ETA {remaining}]') as pbar:
+        result = downloader.download_video(
+            url, video_format, audio_format, container_format,
+            progress_hook=make_download_hook(pbar)
+        )
+    return result
+
+
+def upload_with_progress(uploader, download_result):
+    """
+    Upload a video to Telegram with a tqdm progress bar.
+    """
+    with tqdm(unit='B', unit_scale=True, unit_divisor=1024,
+              desc='  ↑ Uploading  ', miniters=1,
+              bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{rate_fmt}, ETA {remaining}]') as pbar:
+        uploader.upload_to_telegram(
+            download_result,
+            progress_callback=make_upload_progress(pbar)
+        )
 
 
 def main() -> None:
@@ -124,63 +266,19 @@ def main() -> None:
                 print(f"ERROR: Failed to fetch video formats: {e}")
                 return
         
-        # Common format selection (for both single and playlist)
-        print("\nAvailable Video Formats:")
-        video_options = list(formats['video_formats'].items())
-        for i, (fmt_id, details) in enumerate(video_options, 1):
-            print(f"{i}. {fmt_id}: {details}")
-        
-        # Get video format first
-        while True:
-            try:
-                video_choice = input(f"\nEnter video format (1-{len(video_options)}): ").strip()
-                if not video_choice:
-                    print("Please enter a number.")
-                    continue
-                idx = int(video_choice) - 1
-                if 0 <= idx < len(video_options):
-                    video_format = video_options[idx][0]
-                    print(f"Selected: {video_format}")
-                    break
-                else:
-                    print(f"Please enter a number between 1 and {len(video_options)}")
-            except ValueError:
-                print("Please enter a valid number.")
-        
-        # Now print and get optional audio format
-        audio_format = None
-        if formats['audio_formats']:
-            print("\nAvailable Audio Formats:")
-            audio_options = list(formats['audio_formats'].items())
-            for i, (fmt_id, details) in enumerate(audio_options, 1):
-                print(f"{i}. {fmt_id}: {details}")
-            while True:
-                try:
-                    audio_choice = input(f"Enter audio format ID (1-{len(audio_options)}) or press Enter to skip: ").strip()
-                    if not audio_choice:
-                        break
-                    idx = int(audio_choice) - 1
-                    if 0 <= idx < len(audio_options):
-                        audio_format = audio_options[idx][0]
-                        print(f"Selected audio: {audio_format}")
-                        break
-                    else:
-                        print(f"Please enter a number between 1 and {len(audio_options)} or Enter to skip")
-                except ValueError:
-                    if audio_choice:
-                        print("Please enter a valid number or Enter to skip.")
-        else:
-            print("\nNo separate audio formats found.")
+        # Smart format selection (for both single and playlist)
+        video_format, audio_format = display_video_formats(formats)
         
         # Container format selection
         valid_containers = ['mp4', 'mkv', 'webm']
-        print("\nAvailable container formats:")
+        print("\n  Available container formats:")
         for i, container in enumerate(valid_containers, 1):
-            print(f"{i}. {container}")
+            marker = "  ★ Recommended" if i == 1 else ""
+            print(f"  {i:>3}.  {container}{marker}")
         
         container_format = 'mp4'
         while True:
-            container_choice = input(f"Select container format [1-{len(valid_containers)}]: ").strip()
+            container_choice = input(f"\n  Select container format [1-{len(valid_containers)}] (Enter = recommended): ").strip()
             if not container_choice:
                 break
             
@@ -190,11 +288,11 @@ def main() -> None:
                     container_format = valid_containers[idx]
                     break
                 else:
-                    print(f"Please enter a number between 1 and {len(valid_containers)}: ")
+                    print(f"  Please enter a number between 1 and {len(valid_containers)}")
             except ValueError:
-                print("Please enter a valid number: ")
+                print("  Please enter a valid number")
         
-        print(f"Using container format: {container_format}")
+        print(f"  ✓ Container: {container_format}")
         
         # For single video, check estimated size and warn
         if not is_playlist_url:
@@ -206,67 +304,72 @@ def main() -> None:
                     print("Aborted by user.")
                     return
             else:
-                print(f"Estimated size: {estimated_size:.1f} MB")
+                print(f"Estimated size: {format_size(estimated_size)}")
         
         # Process videos
         if is_playlist_url:
             successful_uploads = 0
-            for idx, entry in enumerate(selected_entries, 1):
-                entry_url = entry['url']
-                entry_title = entry['title']
-                print(f"\nProcessing {idx}/{len(selected_entries)}: {entry_title}")
-                
-                # Estimate size
-                estimated_size = downloader.get_estimated_size(entry_url, video_format, audio_format, container_format)
-                if estimated_size > max_size_mb:
-                    print(f"Skipped {entry_title}: estimated {estimated_size:.1f} MB > {max_size_mb} MB limit")
-                    continue
-                
-                print(f"Estimated size: {estimated_size:.1f} MB")
-                
-                local_download_result = None
-                try:
-                    local_download_result = downloader.download_video(entry_url, video_format, audio_format, container_format)
-                    print(f"Downloaded: {local_download_result.video_title} ({local_download_result.duration}s)")
+            # Use context manager to keep Telegram session alive for all playlist uploads
+            with uploader:
+                for idx, entry in enumerate(selected_entries, 1):
+                    entry_url = entry['url']
+                    entry_title = entry['title']
+                    print(f"\n[{idx}/{len(selected_entries)}] {entry_title}")
+                    
+                    # Estimate size
+                    estimated_size = downloader.get_estimated_size(entry_url, video_format, audio_format, container_format)
+                    if estimated_size > max_size_mb:
+                        print(f"  Skipped: estimated {format_size(estimated_size)} > {format_size(max_size_mb)} limit")
+                        continue
+                    
+                    if estimated_size > 0:
+                        print(f"  Estimated size: {format_size(estimated_size)}")
+                    
+                    local_download_result = None
+                    try:
+                        local_download_result = download_with_progress(
+                            downloader, entry_url, video_format, audio_format, container_format
+                        )
+                        print(f"  ✓ Downloaded: {local_download_result.video_title} ({local_download_result.duration}s)")
 
-                    if local_download_result.thumbnail_path:
-                        local_download_result.thumbnail_path = convert_thumbnail(local_download_result.thumbnail_path)
-                    
-                    print("Uploading to Telegram...")
-                    uploader.upload_to_telegram(local_download_result)
-                    print("Upload successful!")
-                    successful_uploads += 1
-                    
-                except Exception as e:
-                    print(f"ERROR processing {entry_title}: {e}")
-                finally:
-                    if local_download_result:
-                        print("Cleaning up...")
-                        cleanup(local_download_result)
+                        if local_download_result.thumbnail_path:
+                            local_download_result.thumbnail_path = convert_thumbnail(local_download_result.thumbnail_path)
+                        
+                        upload_with_progress(uploader, local_download_result)
+                        print("  ✓ Upload successful!")
+                        successful_uploads += 1
+                        
+                    except Exception as e:
+                        print(f"  ✗ ERROR processing {entry_title}: {e}")
+                    finally:
+                        if local_download_result:
+                            cleanup(local_download_result)
             
-            print(f"\nPlaylist processing complete. {successful_uploads}/{len(selected_entries)} videos uploaded successfully.")
+            print(f"\n{'='*40}")
+            print(f"Playlist complete: {successful_uploads}/{len(selected_entries)} videos uploaded successfully.")
         else:
             # Single video processing
-            print("\nDownloading video...")
+            print("")
             try:
-                download_result = downloader.download_video(url, video_format, audio_format, container_format)
-                print(f"Downloaded: {download_result.video_title} ({download_result.duration}s)")
+                download_result = download_with_progress(
+                    downloader, url, video_format, audio_format, container_format
+                )
+                print(f"  ✓ Downloaded: {download_result.video_title} ({download_result.duration}s)")
 
                 if download_result.thumbnail_path:
                     download_result.thumbnail_path = convert_thumbnail(download_result.thumbnail_path)
                 
-                print("Uploading to Telegram...")
-                uploader.upload_to_telegram(download_result)
-                print("Upload successful!")
+                upload_with_progress(uploader, download_result)
+                print("  ✓ Upload successful!")
                 
             except Exception as e:
                 print(f"ERROR: {e}")
     finally:
-        if download_result:
-            print("Cleaning up...")
+        # Cleanup for single video mode (playlist handles its own cleanup above)
+        if download_result is not None:
             cleanup(download_result)
-            print("Done!")
+        print("Done!")
 
 
 if __name__ == '__main__':
-    main()
+    main()

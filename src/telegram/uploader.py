@@ -30,35 +30,70 @@ class TelegramUploader:
             api_id=api_id,
             api_hash=api_hash
         )
+        self._started = False
         
-        logging.basicConfig(
-            level=logging.INFO, 
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
         self.logger = logging.getLogger(__name__)
 
-    def upload_to_telegram(self, download_result: DownloadResult) -> bool:
+    def start(self) -> None:
+        """Start the Pyrogram client session. Call once before batch uploads."""
+        if not self._started:
+            self.app.start()
+            self._started = True
+
+    def stop(self) -> None:
+        """Stop the Pyrogram client session. Call once after batch uploads."""
+        if self._started:
+            self.app.stop()
+            self._started = False
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        return False
+
+    def upload_to_telegram(self, download_result: DownloadResult, progress_callback=None) -> bool:
         """
-        Upload video to Telegram channel
+        Upload video to Telegram channel.
+        
+        If the client was started externally (via start() or context manager),
+        reuses that session. Otherwise starts and stops for this single upload.
+        
+        :param download_result: DownloadResult with video path and metadata
+        :param progress_callback: Optional callback(current_bytes, total_bytes) for upload progress
         """
         if not os.path.exists(download_result.video_path):
             raise FileNotFoundError(f"Video file not found: {download_result.video_path}")
         
+        # If session wasn't started externally, manage it for this single call
+        manage_session = not self._started
+        
         try:
-            with self.app:
-                kwargs = {
-                    'chat_id': self.channel_id,
-                    'video': download_result.video_path,
-                    'caption': download_result.video_title,
-                    'duration': download_result.duration
-                }
-                
-                if download_result.thumbnail_path and os.path.exists(download_result.thumbnail_path):
-                    kwargs['thumb'] = download_result.thumbnail_path
-                
-                self.app.send_video(**kwargs)
-                return True
+            if manage_session:
+                self.start()
+            
+            kwargs = {
+                'chat_id': self.channel_id,
+                'video': download_result.video_path,
+                'caption': download_result.video_title,
+                'duration': download_result.duration
+            }
+            
+            if download_result.thumbnail_path and os.path.exists(download_result.thumbnail_path):
+                kwargs['thumb'] = download_result.thumbnail_path
+            
+            if progress_callback:
+                kwargs['progress'] = progress_callback
+            
+            self.app.send_video(**kwargs)
+            return True
         
         except Exception as e:
             self.logger.error(f"Upload failed: {e}")
             raise RuntimeError(f"Failed to upload to Telegram: {e}")
+        finally:
+            if manage_session:
+                self.stop()
+

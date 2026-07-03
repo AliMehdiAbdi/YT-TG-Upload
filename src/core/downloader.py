@@ -5,7 +5,7 @@ from typing import Optional, Dict, List, Union
 from dataclasses import dataclass
 import yt_dlp
 
-from src.models import VideoFormat, AudioFormat, VideoInfo, DownloadResult
+from src.models import VideoFormat, AudioFormat, ParsedVideoFormat, ParsedAudioFormat, VideoInfo, DownloadResult
 from src.utils.validators import validate_youtube_url
 from src.utils.helpers import convert_thumbnail
 
@@ -22,10 +22,6 @@ class YouTubeTelegramDownloader:
         elif cookies_file:
             logging.warning(f"Cookie file {cookies_file} not found")
         
-        logging.basicConfig(
-            level=logging.INFO, 
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
         self.logger = logging.getLogger(__name__)
 
     def _base_opts(self, **extra) -> dict:
@@ -48,7 +44,12 @@ class YouTubeTelegramDownloader:
 
     def get_video_qualities(self, url: str) -> VideoInfo:
         """
-        Fetch available video and audio qualities
+        Fetch available video and audio qualities.
+        
+        Returns structured, grouped, and sorted format lists.
+        Video formats are grouped by (resolution, fps) keeping the best codec
+        per group, sorted descending by resolution then fps.
+        Audio formats are sorted descending by bitrate.
         
         :param url: YouTube video URL
         :return: VideoInfo with available formats and metadata
@@ -64,23 +65,80 @@ class YouTubeTelegramDownloader:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 
-                video_formats = {}
-                audio_formats = {}
+                raw_video: List[ParsedVideoFormat] = []
+                raw_audio: List[ParsedAudioFormat] = []
                 
                 for fmt in info.get('formats', []):
-                    if fmt.get('vcodec') != 'none':
-                        resolution = fmt.get('height', 0)
-                        fps = fmt.get('fps', 0)
-                        size_mb = fmt.get('filesize', 0) / (1024 * 1024) if fmt.get('filesize') else 0
-                        video_formats[fmt['format_id']] = (
-                            f"{resolution}p{f'@{fps}fps' if fps else ''} "
-                            f"({fmt['ext']}, {size_mb:.1f}MB)"
-                        )
+                    vcodec = fmt.get('vcodec', 'none')
+                    acodec = fmt.get('acodec', 'none')
                     
-                    if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
-                        audio_formats[fmt['format_id']] = (
-                            f"{fmt.get('abr', 0)}kbps ({fmt['ext']})"
-                        )
+                    # Video-only or video+audio streams
+                    if vcodec != 'none':
+                        resolution = fmt.get('height', 0)
+                        if resolution == 0:
+                            continue
+                        fps = fmt.get('fps', 0) or 0
+                        filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0) or 0
+                        size_mb = filesize / (1024 * 1024) if filesize else 0
+                        raw_video.append({
+                            'format_id': fmt['format_id'],
+                            'resolution': resolution,
+                            'fps': fps,
+                            'ext': fmt.get('ext', '?'),
+                            'vcodec': vcodec.split('.')[0],  # e.g. 'avc1.64001f' -> 'avc1'
+                            'size_mb': round(size_mb, 1),
+                        })
+                    
+                    # Audio-only streams
+                    if acodec != 'none' and vcodec == 'none':
+                        raw_audio.append({
+                            'format_id': fmt['format_id'],
+                            'bitrate': fmt.get('abr', 0) or 0,
+                            'ext': fmt.get('ext', '?'),
+                            'acodec': acodec.split('.')[0],
+                        })
+                
+                # --- Group video formats by (resolution, fps) ---
+                # Keep the best codec per group: prefer avc1/h264 (widest compatibility),
+                # then largest size as a proxy for quality.
+                groups: Dict[tuple, ParsedVideoFormat] = {}
+                # Codec priority: lower = better (prefer h264/avc1 for compatibility)
+                codec_priority = {'avc1': 0, 'h264': 0, 'av01': 1, 'vp9': 2, 'vp09': 2}
+                
+                for vf in raw_video:
+                    key = (vf['resolution'], vf['fps'])
+                    existing = groups.get(key)
+                    if existing is None:
+                        groups[key] = vf
+                    else:
+                        # Compare: prefer better codec priority, then larger size
+                        new_prio = codec_priority.get(vf['vcodec'], 99)
+                        old_prio = codec_priority.get(existing['vcodec'], 99)
+                        if new_prio < old_prio or (new_prio == old_prio and vf['size_mb'] > existing['size_mb']):
+                            groups[key] = vf
+                
+                # Sort: highest resolution first, then highest fps
+                video_formats = sorted(
+                    groups.values(),
+                    key=lambda f: (f['resolution'], f['fps']),
+                    reverse=True
+                )
+                
+                # Sort audio: highest bitrate first
+                audio_formats = sorted(
+                    raw_audio,
+                    key=lambda f: f['bitrate'],
+                    reverse=True
+                )
+                # Deduplicate audio by bitrate (keep first = best codec naturally)
+                seen_bitrates = set()
+                deduped_audio: List[ParsedAudioFormat] = []
+                for af in audio_formats:
+                    br_key = round(af['bitrate'])
+                    if br_key not in seen_bitrates:
+                        seen_bitrates.add(br_key)
+                        deduped_audio.append(af)
+                audio_formats = deduped_audio
                 
                 if not video_formats:
                     raise RuntimeError(
@@ -103,7 +161,7 @@ class YouTubeTelegramDownloader:
             self.logger.error(f"Error fetching video qualities: {e}")
             raise RuntimeError(f"Unexpected error: {e}")
 
-    def download_video(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4') -> DownloadResult:
+    def download_video(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4', progress_hook=None) -> DownloadResult:
         """
         Download YouTube video with specified formats and container
         
@@ -111,6 +169,7 @@ class YouTubeTelegramDownloader:
         :param video_format: Video format ID
         :param audio_format: Optional audio format ID
         :param container_format: Container format (mp4, mkv, webm)
+        :param progress_hook: Optional callback for download progress (receives yt-dlp progress dict)
         :return: DownloadResult with path and metadata
         """
         if not validate_youtube_url(url):
@@ -131,6 +190,9 @@ class YouTubeTelegramDownloader:
             no_warnings=False,
             merge_output_format=container_format,
         )
+        
+        if progress_hook:
+            ydl_opts['progress_hooks'] = [progress_hook]
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
