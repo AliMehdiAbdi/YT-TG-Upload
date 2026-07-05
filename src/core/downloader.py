@@ -171,6 +171,7 @@ class YouTubeTelegramDownloader:
             no_warnings=True,
             noprogress=True,
             merge_output_format=container_format,
+            concurrent_fragment_downloads=10,
         )
         
         if progress_hook:
