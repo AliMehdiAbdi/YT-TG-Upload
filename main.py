@@ -18,6 +18,7 @@ from src.utils.validators import validate_youtube_url
 from src.utils.helpers import get_env_setup_instructions, cleanup, convert_thumbnail, format_size
 
 def main() -> None:
+    load_dotenv()
     console.print(Panel.fit("[bold blue]YT-TG-Upload[/bold blue]\n[dim]YouTube to Telegram Downloader/Uploader[/dim]"))
     
     required_vars = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID']

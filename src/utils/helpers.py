@@ -73,7 +73,7 @@ Create a .env file in the same directory as this script with the following conte
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
 TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHANNEL_ID=-100XXXXXXXXXX # Your channel ID (numeric, no quotes)
+TELEGRAM_CHANNEL_ID=-100XXXXXXXXXX
 
 Replace the values with your actual Telegram API credentials.
 You can obtain them from https://my.telegram.org/apps
