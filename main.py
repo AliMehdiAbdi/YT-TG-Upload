@@ -219,5 +219,11 @@ def main() -> None:
             cleanup(download_result)
         console.print("[bold green]Done![/bold green]")
 
+import sys
+
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+        sys.exit(0)
