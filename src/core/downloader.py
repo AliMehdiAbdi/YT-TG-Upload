@@ -42,6 +42,11 @@ class YouTubeTelegramDownloader:
         opts.update(extra)
         return opts
 
+    @staticmethod
+    def check_js_runtime() -> bool:
+        """Check if a supported JS runtime (node or deno) is installed."""
+        return bool(shutil.which('node') or shutil.which('deno'))
+
     def get_video_qualities(self, url: str) -> VideoInfo:
         """
         Fetch available video and audio qualities.
@@ -59,7 +64,7 @@ class YouTubeTelegramDownloader:
         if not validate_youtube_url(url):
             raise ValueError(f"Invalid YouTube URL: {url}")
         
-        ydl_opts = self._base_opts(quiet=True, no_warnings=False)
+        ydl_opts = self._base_opts(quiet=True, no_warnings=True)
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:

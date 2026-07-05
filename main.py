@@ -30,6 +30,15 @@ def main() -> None:
             console.print(f"  - {var}")
         console.print(get_env_setup_instructions())
         return
+        
+    if not YouTubeTelegramDownloader.check_js_runtime():
+        console.print(Panel(
+            "[yellow]No supported JavaScript runtime (Node.js or Deno) could be found.[/yellow]\n\n"
+            "YouTube extraction without a JS runtime is deprecated. Some premium or high-quality formats may be missing.\n"
+            "To fix this, install [bold]Node.js[/bold] or [bold]Deno[/bold] on your system.",
+            title="⚠ Warning: JS Runtime Missing",
+            border_style="yellow"
+        ))
     
     url = Prompt.ask("[bold]Enter YouTube video URL[/bold]").strip()
     if not url:
