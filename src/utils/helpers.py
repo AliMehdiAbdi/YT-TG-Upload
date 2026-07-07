@@ -7,19 +7,28 @@ from src.models import DownloadResult
 
 def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
     """
-    Convert thumbnail to a Telegram-supported format (PNG)
+    Convert thumbnail to a Telegram-supported format (JPEG, max 320x320, < 200KB)
     """
     if not input_thumbnail or not os.path.exists(input_thumbnail):
         return None
     
-    output_thumbnail = input_thumbnail.rsplit('.', 1)[0] + '.png'
+    output_thumbnail = input_thumbnail.rsplit('.', 1)[0] + '.jpg'
     
     try:
         # Try PIL first
         try:
             from PIL import Image
             img = Image.open(input_thumbnail)
-            img.save(output_thumbnail, 'PNG')
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            # Maintain aspect ratio, max 320px
+            # Image.Resampling.LANCZOS is high-quality downsampling
+            if hasattr(Image, 'Resampling'):
+                img.thumbnail((320, 320), Image.Resampling.LANCZOS)
+            else:
+                img.thumbnail((320, 320), Image.ANTIALIAS) # Fallback for older PIL
+            
+            img.save(output_thumbnail, 'JPEG', quality=90)
             return output_thumbnail
         except ImportError:
             logging.getLogger(__name__).info("PIL not available, trying FFmpeg")
@@ -27,7 +36,7 @@ def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
         # Use FFmpeg as fallback
         try:
             subprocess.run(
-                ['ffmpeg', '-i', input_thumbnail, output_thumbnail],
+                ['ffmpeg', '-y', '-i', input_thumbnail, '-vf', 'scale=320:320:force_original_aspect_ratio=decrease', '-q:v', '2', output_thumbnail],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
