@@ -7,8 +7,9 @@ from src.models import DownloadResult
 
 def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
     """
-    Convert thumbnail to a Telegram-supported format (JPEG) without downscaling it.
-    This preserves the maximum resolution (e.g., 1080p).
+    Convert thumbnail to Telegram-compatible format.
+    Telegram requires: JPEG, max 320px on longest side, under 200KB.
+    Applies sharpening after downscale to keep the image crisp.
     """
     if not input_thumbnail or not os.path.exists(input_thumbnail):
         return None
@@ -18,21 +19,38 @@ def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
     try:
         # Try PIL first
         try:
-            from PIL import Image
+            from PIL import Image, ImageFilter
             img = Image.open(input_thumbnail)
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
             
-            # Save as high-quality JPEG without resizing
-            img.save(output_thumbnail, 'JPEG', quality=95)
+            # Resize so the longest side is 320px, preserving aspect ratio
+            if hasattr(Image, 'Resampling'):
+                img.thumbnail((320, 320), Image.Resampling.LANCZOS)
+            else:
+                img.thumbnail((320, 320), Image.ANTIALIAS)
+            
+            # Sharpen to counteract downscale softness
+            img = img.filter(ImageFilter.SHARPEN)
+            
+            # Save as JPEG, stepping down quality if needed to stay under 200KB
+            for quality in (90, 80, 70, 60):
+                img.save(output_thumbnail, 'JPEG', quality=quality)
+                if os.path.getsize(output_thumbnail) <= 200 * 1024:
+                    break
+            
             return output_thumbnail
         except ImportError:
             logging.getLogger(__name__).info("PIL not available, trying FFmpeg")
         
-        # Use FFmpeg as fallback
+        # Use FFmpeg as fallback (resize + sharpen)
         try:
             subprocess.run(
-                ['ffmpeg', '-y', '-i', input_thumbnail, '-q:v', '2', output_thumbnail],
+                [
+                    'ffmpeg', '-y', '-i', input_thumbnail,
+                    '-vf', 'scale=320:-1:force_original_aspect_ratio=decrease,unsharp=5:5:0.5:5:5:0',
+                    '-q:v', '3', output_thumbnail
+                ],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
