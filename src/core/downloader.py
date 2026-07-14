@@ -97,11 +97,14 @@ class YouTubeTelegramDownloader:
                     
                     # Audio-only streams
                     if acodec != 'none' and vcodec == 'none':
+                        filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0) or 0
+                        size_mb = filesize / (1024 * 1024) if filesize else 0
                         raw_audio.append({
                             'format_id': fmt['format_id'],
                             'bitrate': fmt.get('abr', 0) or 0,
                             'ext': fmt.get('ext', '?'),
                             'acodec': acodec.split('.')[0],
+                            'size_mb': round(size_mb, 1),
                             'format_note': fmt.get('format_note', ''),
                         })
                 

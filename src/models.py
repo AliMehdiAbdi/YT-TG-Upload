@@ -27,6 +27,7 @@ class ParsedAudioFormat(TypedDict):
     bitrate: float      # kbps
     ext: str
     acodec: str         # e.g. "opus" or "mp4a"
+    size_mb: float      # estimated size, 0 if unknown
     format_note: str
 
 class VideoInfo(TypedDict):

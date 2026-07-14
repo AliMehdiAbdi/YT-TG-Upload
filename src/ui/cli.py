@@ -63,7 +63,6 @@ def display_video_formats(formats: VideoInfo) -> tuple:
     v_table.add_column("Codec", style="green")
     v_table.add_column("Ext", style="yellow")
     v_table.add_column("Size", justify="right")
-    v_table.add_column("Note", style="bold green")
     
     def get_clean_note(vf):
         note = vf.get('format_note', '').strip()
@@ -82,8 +81,6 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         sig = (vf['resolution'], vf['fps'], vf['vcodec'], vf['ext'], clean_note)
         if sig not in seen_video:
             seen_video.add(sig)
-            # Store the clean note for display
-            vf['display_note'] = clean_note
             unique_video_formats.append(vf)
             
     for i, vf in enumerate(unique_video_formats, 1):
@@ -91,16 +88,13 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         if vf['fps'] and vf['fps'] > 0:
             quality += f"@{vf['fps']}fps"
         size_str = format_size(vf['size_mb'])
-        marker = "★ Recommended" if i == 1 else ""
-        if vf.get('display_note'):
-            marker = f"{marker} [{vf['display_note']}]".strip()
-        v_table.add_row(str(i), quality, vf['vcodec'], vf['ext'], size_str, marker)
+        v_table.add_row(str(i), quality, vf['vcodec'], vf['ext'], size_str)
     
     console.print(v_table)
     
     # Video Selection
     while True:
-        video_choice = Prompt.ask("Select video format [dim](Enter = recommended)[/dim]", default="1", show_default=False)
+        video_choice = Prompt.ask("Select video format", default="1")
         try:
             idx = int(video_choice) - 1
             if 0 <= idx < len(unique_video_formats):
@@ -124,33 +118,31 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         a_table.add_column("Bitrate", style="cyan")
         a_table.add_column("Codec", style="green")
         a_table.add_column("Ext", style="yellow")
-        a_table.add_column("Note", style="bold green")
+        a_table.add_column("Size", justify="right")
         
         # Deduplicate audio formats visually
         unique_audio_formats = []
         seen_audio = set()
         for af in audio_formats:
-            sig = (af['bitrate'], af['acodec'], af['ext'], af.get('format_note', ''))
+            sig = (af['bitrate'], af['acodec'], af['ext'])
             if sig not in seen_audio:
                 seen_audio.add(sig)
                 unique_audio_formats.append(af)
         
         for i, af in enumerate(unique_audio_formats, 1):
             bitrate_str = f"{af['bitrate']:.0f} kbps"
-            marker = "★ Recommended" if i == 1 else ""
-            if af.get('format_note'):
-                marker = f"{marker} [{af['format_note']}]".strip()
-            a_table.add_row(str(i), bitrate_str, af['acodec'], af['ext'], marker)
+            size_str = format_size(af.get('size_mb', 0))
+            a_table.add_row(str(i), bitrate_str, af['acodec'], af['ext'], size_str)
         
         console.print(a_table)
         
         while True:
-            audio_choice = Prompt.ask("Select audio format [dim](Enter = recommended)[/dim]", default="1", show_default=False)
+            audio_choice = Prompt.ask("Select audio format", default="1")
             try:
                 idx = int(audio_choice) - 1
                 if 0 <= idx < len(unique_audio_formats):
                     selected_audio = unique_audio_formats[idx]
-                    console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']})")
+                    console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']}, {format_size(selected_audio.get('size_mb', 0))})")
                     break
                 else:
                     console.print(f"[red]Please enter a number between 1 and {len(unique_audio_formats)}[/red]")
