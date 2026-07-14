@@ -7,9 +7,9 @@ from src.models import DownloadResult
 
 def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
     """
-    Convert thumbnail to Telegram-compatible format.
-    Telegram requires: JPEG, max 320px on longest side, under 200KB.
-    Applies sharpening after downscale to keep the image crisp.
+    Convert thumbnail to JPEG format for Telegram.
+    No resizing — Pyrogram (MTProto) handles server-side scaling
+    much better than client-side downscaling.
     """
     if not input_thumbnail or not os.path.exists(input_thumbnail):
         return None
@@ -19,38 +19,17 @@ def convert_thumbnail(input_thumbnail: str) -> Optional[str]:
     try:
         # Try PIL first
         try:
-            from PIL import Image, ImageFilter
-            img = Image.open(input_thumbnail)
-            if img.mode in ('RGBA', 'P'):
-                img = img.convert('RGB')
-            
-            # Resize so the longest side is 320px, preserving aspect ratio
-            if hasattr(Image, 'Resampling'):
-                img.thumbnail((320, 320), Image.Resampling.LANCZOS)
-            else:
-                img.thumbnail((320, 320), Image.ANTIALIAS)
-            
-            # Sharpen to counteract downscale softness
-            img = img.filter(ImageFilter.SHARPEN)
-            
-            # Save as JPEG, stepping down quality if needed to stay under 200KB
-            for quality in (90, 80, 70, 60):
-                img.save(output_thumbnail, 'JPEG', quality=quality)
-                if os.path.getsize(output_thumbnail) <= 200 * 1024:
-                    break
-            
+            from PIL import Image
+            with Image.open(input_thumbnail) as img:
+                img.convert('RGB').save(output_thumbnail, 'JPEG')
             return output_thumbnail
         except ImportError:
             logging.getLogger(__name__).info("PIL not available, trying FFmpeg")
         
-        # Use FFmpeg as fallback (resize + sharpen)
+        # Use FFmpeg as fallback
         try:
             subprocess.run(
-                [
-                    'ffmpeg', '-y', '-i', input_thumbnail,
-                    '-vf', 'scale=320:-1:force_original_aspect_ratio=decrease,unsharp=5:5:0.5:5:5:0',
-                    '-q:v', '3', output_thumbnail
-                ],
+                ['ffmpeg', '-y', '-i', input_thumbnail, output_thumbnail],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
