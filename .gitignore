@@ -1,5 +1,4 @@
 .env
-.cursorignore
 
 # Python
 __pycache__/
