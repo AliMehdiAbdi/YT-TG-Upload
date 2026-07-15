@@ -2,13 +2,13 @@
 
 A Python tool that allows you to download YouTube videos in your preferred quality and automatically upload them to a Telegram channel.
 
-![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## ✨ Features
 
 - 📋 Lists all available video and audio quality options
-- 🎮 User-friendly command-line interface
+- 🎮 User-friendly command-line interface with real-time progress tracking
 - 🔒 Support for authenticated YouTube videos via cookies
 - 🖼️ Preserves video thumbnails
 - 📱 Uploads directly to Telegram channels
@@ -18,10 +18,11 @@ A Python tool that allows you to download YouTube videos in your preferred quali
 
 ## 📋 Requirements
 
-- Python 3.7 or higher
+- Python 3.8 or higher
 - Telegram API credentials (API ID, API Hash)
 - A Telegram Bot token
 - FFmpeg
+- Node.js or Deno (recommended for extracting premium/high-quality formats)
 
 ## 🔧 FFmpeg Installation
 
@@ -102,11 +103,13 @@ python main.py
 
 Follow the interactive prompts:
 
-1. Enter the YouTube URL
+1. Enter the YouTube URL (single video or playlist)
 2. Optionally provide a path to a Netscape-format cookies file
-3. Select from the available video and audio formats
-4. Select the desired video container format (MP4, MKV, WebM)
-5. Wait for the download and upload to complete
+3. For playlists: select specific videos (e.g., `all`, `1`, `1,3-5`) and set a max file size per video
+4. Select from the available video and audio formats displayed in Rich tables
+5. Select the desired video container format (MP4, MKV, WebM)
+6. Review the estimated download size (a warning is shown if it exceeds 2048 MB)
+7. Wait for the download and upload to complete
 
 ## 🍪 Using Cookies for Private Videos
 
@@ -139,8 +142,10 @@ For private or age-restricted videos, you can use a cookies file:
 ## 🛠️ Troubleshooting
 
 - **Error: Required environment variables not set** - Make sure your `.env` file is properly configured
+- **Warning: JS Runtime Missing** - Install Node.js or Deno for access to premium format extraction
 - **Error: Invalid YouTube URL** - Check that the URL is formatted correctly
 - **Upload failures** - Ensure the bot has admin privileges in the channel and the channel ID is correct
+- **No video formats found** - yt-dlp may be outdated; run `pip install -U yt-dlp`
 - **Format ID errors** - Select a format ID from the displayed list
 
 ## 📄 License
