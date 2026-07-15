@@ -1,5 +1,5 @@
 python-dotenv
-pyrofork==2.2.11
+wzgram[fast]
 tgcrypto
 yt-dlp
 pillow
