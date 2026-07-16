@@ -87,7 +87,7 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         quality = f"{vf['resolution']}p"
         if vf['fps'] and vf['fps'] > 0:
             quality += f"@{vf['fps']}fps"
-        size_str = format_size(vf['size_mb'])
+        size_str = format_size(vf['size_mb'], rich=True)
         v_table.add_row(str(i), quality, vf['vcodec'], vf['ext'], size_str)
     
     console.print(v_table)
@@ -102,7 +102,8 @@ def display_video_formats(formats: VideoInfo) -> tuple:
                 quality = f"{selected_video['resolution']}p"
                 if selected_video['fps']:
                     quality += f"@{selected_video['fps']}fps"
-                console.print(f"[green]✓ Selected Video:[/green] {quality} ({selected_video['vcodec']}, {format_size(selected_video['size_mb'])})")
+                size_label = format_size(selected_video['size_mb'], rich=True)
+                console.print(f"[green]✓ Selected Video:[/green] {quality} ({selected_video['vcodec']}, {size_label})")
                 break
             else:
                 console.print(f"[red]Please enter a number between 1 and {len(unique_video_formats)}[/red]")
@@ -131,7 +132,7 @@ def display_video_formats(formats: VideoInfo) -> tuple:
         
         for i, af in enumerate(unique_audio_formats, 1):
             bitrate_str = f"{af['bitrate']:.0f} kbps"
-            size_str = format_size(af.get('size_mb', 0))
+            size_str = format_size(af.get('size_mb', 0), rich=True)
             a_table.add_row(str(i), bitrate_str, af['acodec'], af['ext'], size_str)
         
         console.print(a_table)
@@ -142,7 +143,8 @@ def display_video_formats(formats: VideoInfo) -> tuple:
                 idx = int(audio_choice) - 1
                 if 0 <= idx < len(unique_audio_formats):
                     selected_audio = unique_audio_formats[idx]
-                    console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']}, {format_size(selected_audio.get('size_mb', 0))})")
+                    size_label = format_size(selected_audio.get('size_mb', 0), rich=True)
+                    console.print(f"[green]✓ Selected Audio:[/green] {selected_audio['bitrate']:.0f} kbps ({selected_audio['acodec']}, {size_label})")
                     break
                 else:
                     console.print(f"[red]Please enter a number between 1 and {len(unique_audio_formats)}[/red]")
@@ -151,9 +153,7 @@ def display_video_formats(formats: VideoInfo) -> tuple:
     else:
         console.print("\n[yellow]No separate audio formats found (audio may be included in video stream).[/yellow]")
         
-    video_format_id = selected_video['format_id']
-    audio_format_id = selected_audio['format_id'] if selected_audio else None
-    return video_format_id, audio_format_id
+    return selected_video, selected_audio
 
 
 def download_with_progress(downloader, url, video_format, audio_format, container_format):

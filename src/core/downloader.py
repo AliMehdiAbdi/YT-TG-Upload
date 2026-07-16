@@ -267,16 +267,120 @@ class YouTubeTelegramDownloader:
         :param audio_formats: List of parsed audio formats
         :param video_format_id: Selected video format ID
         :param audio_format_id: Selected audio format ID (optional)
-        :return: Estimated size in MB
+        :return: Estimated size in MB (0 if unknown / not found)
         """
         total_mb = 0.0
+        video_known = False
         for vf in video_formats:
             if vf['format_id'] == video_format_id:
-                total_mb += vf.get('size_mb', 0)
+                size = vf.get('size_mb', 0) or 0
+                if size > 0:
+                    total_mb += size
+                    video_known = True
                 break
         if audio_format_id:
             for af in audio_formats:
                 if af['format_id'] == audio_format_id:
-                    total_mb += af.get('size_mb', 0)
+                    size = af.get('size_mb', 0) or 0
+                    if size > 0:
+                        total_mb += size
                     break
+        # If video size is unknown, treat whole estimate as unknown
+        if not video_known:
+            return 0.0
         return total_mb
+
+    @staticmethod
+    def match_video_format(
+        video_formats: List[ParsedVideoFormat],
+        preferred: ParsedVideoFormat,
+    ) -> Optional[ParsedVideoFormat]:
+        """
+        Pick the best video format matching a user preference without re-prompting.
+        
+        Priority:
+          1. Same resolution + fps + codec
+          2. Same resolution + fps (any codec)
+          3. Same resolution (closest fps, preferred codec)
+          4. Closest lower-or-equal resolution
+          5. Best available (highest resolution)
+        """
+        if not video_formats:
+            return None
+
+        target_res = preferred['resolution']
+        target_fps = preferred.get('fps', 0) or 0
+        target_codec = preferred.get('vcodec', '')
+
+        # 1 exact
+        for vf in video_formats:
+            if (vf['resolution'] == target_res
+                    and (vf.get('fps', 0) or 0) == target_fps
+                    and vf.get('vcodec') == target_codec):
+                return vf
+
+        # 2 same res + fps
+        for vf in video_formats:
+            if vf['resolution'] == target_res and (vf.get('fps', 0) or 0) == target_fps:
+                return vf
+
+        # 3 same res, closest fps then preferred codec
+        same_res = [vf for vf in video_formats if vf['resolution'] == target_res]
+        if same_res:
+            same_res.sort(
+                key=lambda f: (
+                    abs((f.get('fps', 0) or 0) - target_fps),
+                    0 if f.get('vcodec') == target_codec else 1,
+                )
+            )
+            return same_res[0]
+
+        # 4 closest lower-or-equal resolution; if none, closest higher
+        lower = [vf for vf in video_formats if vf['resolution'] <= target_res]
+        pool = lower if lower else video_formats
+        pool = sorted(
+            pool,
+            key=lambda f: (
+                -f['resolution'],
+                abs((f.get('fps', 0) or 0) - target_fps),
+                0 if f.get('vcodec') == target_codec else 1,
+            )
+        )
+        return pool[0]
+
+    @staticmethod
+    def match_audio_format(
+        audio_formats: List[ParsedAudioFormat],
+        preferred: Optional[ParsedAudioFormat],
+    ) -> Optional[ParsedAudioFormat]:
+        """
+        Pick the best audio format matching a user preference without re-prompting.
+        
+        Priority:
+          1. Same bitrate + codec
+          2. Same codec (closest bitrate)
+          3. Closest bitrate
+          4. Best available (highest bitrate)
+        """
+        if not audio_formats:
+            return None
+        if not preferred:
+            return audio_formats[0]
+
+        target_br = preferred.get('bitrate', 0) or 0
+        target_codec = preferred.get('acodec', '')
+
+        for af in audio_formats:
+            if (af.get('bitrate', 0) or 0) == target_br and af.get('acodec') == target_codec:
+                return af
+
+        same_codec = [af for af in audio_formats if af.get('acodec') == target_codec]
+        if same_codec:
+            same_codec.sort(key=lambda f: abs((f.get('bitrate', 0) or 0) - target_br))
+            return same_codec[0]
+
+        sorted_by_br = sorted(
+            audio_formats,
+            key=lambda f: abs((f.get('bitrate', 0) or 0) - target_br)
+        )
+        return sorted_by_br[0]

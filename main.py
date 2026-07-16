@@ -15,8 +15,14 @@ from src.ui.cli import (
 )
 from src.core.downloader import YouTubeTelegramDownloader
 from src.telegram.uploader import TelegramUploader
-from src.utils.validators import validate_youtube_url
-from src.utils.helpers import get_env_setup_instructions, cleanup, convert_thumbnail, format_size
+from src.utils.validators import validate_youtube_url, validate_cookies_path
+from src.utils.helpers import (
+    get_env_setup_instructions,
+    cleanup,
+    convert_thumbnail,
+    format_size,
+    format_size_status,
+)
 
 def main() -> None:
     # Suppress pyrogram flood wait warnings (handled automatically)
@@ -52,10 +58,25 @@ def main() -> None:
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     channel_id = int(os.getenv('TELEGRAM_CHANNEL_ID'))
     
-    cookies_file = Prompt.ask("[bold]Enter path to cookies file[/bold] [dim](optional, press Enter to skip)[/dim]", default="", show_default=False).strip()
-    if cookies_file and not os.path.exists(cookies_file):
-        console.print(f"[yellow]Warning: Cookie file {cookies_file} not found[/yellow]")
-        cookies_file = None
+    cookies_file = None
+    while True:
+        cookies_input = Prompt.ask(
+            "[bold]Enter path to cookies file[/bold] [dim](optional, press Enter to skip)[/dim]",
+            default="",
+            show_default=False,
+        ).strip()
+        if not cookies_input:
+            break
+        ok, err = validate_cookies_path(cookies_input)
+        if ok:
+            cookies_file = cookies_input.strip().strip('"').strip("'")
+            console.print(f"[green]✓ Cookies:[/green] {cookies_file}")
+            break
+        console.print(f"[red]Invalid cookies path:[/red] {err}")
+        retry = Confirm.ask("Try another path?", default=True)
+        if not retry:
+            console.print("[yellow]Continuing without cookies.[/yellow]")
+            break
         
     download_result = None
     try:
@@ -111,6 +132,10 @@ def main() -> None:
             
             selected_entries = [playlist_entries[i] for i in selected_indices]
             console.print(f"[green]✓ Selected {len(selected_entries)} videos.[/green]")
+            console.print(
+                "[dim]Quality is chosen once from the first video; "
+                "later videos auto-match the same resolution/fps/codec.[/dim]"
+            )
             
             max_size_mb = IntPrompt.ask("[bold]Enter max file size in MB[/bold]", default=2048)
             
@@ -128,7 +153,9 @@ def main() -> None:
                     console.print(f"[red]ERROR: Failed to fetch video formats: {e}[/red]")
                     return
         
-        video_format, audio_format = display_video_formats(formats)
+        preferred_video, preferred_audio = display_video_formats(formats)
+        video_format = preferred_video['format_id']
+        audio_format = preferred_audio['format_id'] if preferred_audio else None
         
         valid_containers = ['mp4', 'mkv', 'webm']
         console.print("\n[bold]Available container formats:[/bold]")
@@ -156,38 +183,85 @@ def main() -> None:
                 formats['video_formats'], formats['audio_formats'], video_format, audio_format
             )
             
-            if estimated_size > 2048:
-                confirm = Confirm.ask(f"[yellow]Estimated size {estimated_size:.1f} MB > 2048 MB limit. Proceed anyway?[/yellow]", default=True)
+            if estimated_size <= 0:
+                console.print(format_size_status(estimated_size))
+                confirm = Confirm.ask(
+                    "[yellow]Proceed without a size estimate?[/yellow]",
+                    default=True,
+                )
                 if not confirm:
                     console.print("[red]Aborted by user.[/red]")
                     return
-            elif estimated_size > 0:
-                console.print(f"Estimated size: [cyan]{format_size(estimated_size)}[/cyan]")
+            elif estimated_size > 2048:
+                confirm = Confirm.ask(
+                    f"[yellow]Estimated size {format_size(estimated_size)} > 2048 MB limit. Proceed anyway?[/yellow]",
+                    default=True,
+                )
+                if not confirm:
+                    console.print("[red]Aborted by user.[/red]")
+                    return
+            else:
+                console.print(format_size_status(estimated_size))
         
         if is_playlist_url:
             successful_uploads = 0
+            skipped = 0
             with uploader:
                 for idx, entry in enumerate(selected_entries, 1):
                     entry_url = entry['url']
                     entry_title = entry['title']
                     console.print(Panel(f"[bold]{entry_title}[/bold]", title=f"Video {idx}/{len(selected_entries)}", border_style="blue"))
                     
-                    with console.status("[bold cyan]Estimating size..."):
-                        estimated_size = YouTubeTelegramDownloader.estimate_size(
-                            formats['video_formats'], formats['audio_formats'], video_format, audio_format
-                        )
-                    
-                    if estimated_size > max_size_mb:
-                        console.print(f"[yellow]⚠ Skipped:[/yellow] estimated {format_size(estimated_size)} > {format_size(max_size_mb)} limit")
-                        continue
-                    
-                    if estimated_size > 0:
-                        console.print(f"Estimated size: [cyan]{format_size(estimated_size)}[/cyan]")
-                    
                     local_download_result = None
                     try:
+                        # Re-fetch formats per video; match user's quality preference automatically
+                        with console.status("[bold cyan]Matching formats..."):
+                            entry_formats = downloader.get_video_qualities(entry_url)
+                            matched_video = YouTubeTelegramDownloader.match_video_format(
+                                entry_formats['video_formats'], preferred_video
+                            )
+                            matched_audio = YouTubeTelegramDownloader.match_audio_format(
+                                entry_formats['audio_formats'], preferred_audio
+                            )
+                        
+                        if not matched_video:
+                            console.print("[yellow]⚠ Skipped:[/yellow] no video formats available")
+                            skipped += 1
+                            continue
+                        
+                        entry_video_id = matched_video['format_id']
+                        entry_audio_id = matched_audio['format_id'] if matched_audio else None
+                        
+                        fps = matched_video.get('fps') or 0
+                        fps_part = f"@{int(fps)}fps" if fps else ""
+                        match_note = (
+                            f"{matched_video['resolution']}p{fps_part} "
+                            f"{matched_video.get('vcodec', '')}"
+                        )
+                        if matched_video['format_id'] != preferred_video['format_id']:
+                            console.print(f"[dim]Matched format:[/dim] {match_note}")
+                        else:
+                            console.print(f"[dim]Format:[/dim] {match_note}")
+                        
+                        estimated_size = YouTubeTelegramDownloader.estimate_size(
+                            entry_formats['video_formats'],
+                            entry_formats['audio_formats'],
+                            entry_video_id,
+                            entry_audio_id,
+                        )
+                        
+                        if estimated_size > max_size_mb:
+                            console.print(
+                                f"[yellow]⚠ Skipped:[/yellow] estimated "
+                                f"{format_size(estimated_size)} > {format_size(max_size_mb)} limit"
+                            )
+                            skipped += 1
+                            continue
+                        
+                        console.print(format_size_status(estimated_size, max_size_mb))
+                        
                         local_download_result = download_with_progress(
-                            downloader, entry_url, video_format, audio_format, container_format
+                            downloader, entry_url, entry_video_id, entry_audio_id, container_format
                         )
                         console.print(f"[green]✓ Downloaded:[/green] {local_download_result.video_title} ({local_download_result.duration}s)")
 
@@ -200,12 +274,17 @@ def main() -> None:
                         
                     except Exception as e:
                         console.print(f"[red]✗ ERROR processing {entry_title}: {e}[/red]")
-                        console.print("[dim]  This may happen if the selected format is not available for this video.[/dim]")
                     finally:
                         if local_download_result:
                             cleanup(local_download_result)
             
-            console.print(Panel(f"[bold green]Playlist complete:[/bold green] {successful_uploads}/{len(selected_entries)} videos uploaded successfully.", border_style="green"))
+            summary = (
+                f"[bold green]Playlist complete:[/bold green] "
+                f"{successful_uploads}/{len(selected_entries)} uploaded"
+            )
+            if skipped:
+                summary += f", {skipped} skipped"
+            console.print(Panel(summary, border_style="green"))
         else:
             console.print("")
             try:

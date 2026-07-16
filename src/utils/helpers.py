@@ -88,16 +88,32 @@ Replace the values with your actual Telegram API credentials.
 You can obtain them from https://my.telegram.org/apps
 """
 
-def format_size(size_mb: float) -> str:
+def format_size(size_mb: float, *, rich: bool = False) -> str:
     """
     Convert a size in MB to a human-readable string.
     
     :param size_mb: Size in megabytes
+    :param rich: If True, style unknown sizes for Rich console output
     :return: Formatted string (e.g. '320 MB', '1.2 GB', or 'unknown')
     """
-    if size_mb <= 0:
-        return "unknown"
+    if size_mb is None or size_mb <= 0:
+        return "[dim yellow]unknown[/dim yellow]" if rich else "unknown"
     if size_mb >= 1024:
         return f"{size_mb / 1024:.1f} GB"
     return f"{size_mb:.0f} MB"
+
+
+def format_size_status(size_mb: float, max_size_mb: Optional[float] = None) -> str:
+    """
+    Human-readable size line for CLI status (known vs unknown).
+    """
+    if size_mb is None or size_mb <= 0:
+        return (
+            "[yellow]Size: unknown[/yellow] "
+            "[dim](YouTube did not report file size — cannot pre-check limits)[/dim]"
+        )
+    line = f"Estimated size: [cyan]{format_size(size_mb)}[/cyan]"
+    if max_size_mb is not None and size_mb > max_size_mb:
+        line += f" [yellow](over {format_size(max_size_mb)} limit)[/yellow]"
+    return line
 
