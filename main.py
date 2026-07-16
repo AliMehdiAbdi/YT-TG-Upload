@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from typing import Dict, List, Callable, Optional
 from rich.panel import Panel
@@ -151,15 +152,16 @@ def main() -> None:
         console.print(f"[green]✓ Container:[/green] {container_format}")
         
         if not is_playlist_url:
-            with console.status("[bold cyan]Estimating download size..."):
-                estimated_size = downloader.get_estimated_size(url, video_format, audio_format, container_format)
+            estimated_size = YouTubeTelegramDownloader.estimate_size(
+                formats['video_formats'], formats['audio_formats'], video_format, audio_format
+            )
             
             if estimated_size > 2048:
                 confirm = Confirm.ask(f"[yellow]Estimated size {estimated_size:.1f} MB > 2048 MB limit. Proceed anyway?[/yellow]", default=True)
                 if not confirm:
                     console.print("[red]Aborted by user.[/red]")
                     return
-            else:
+            elif estimated_size > 0:
                 console.print(f"Estimated size: [cyan]{format_size(estimated_size)}[/cyan]")
         
         if is_playlist_url:
@@ -171,7 +173,9 @@ def main() -> None:
                     console.print(Panel(f"[bold]{entry_title}[/bold]", title=f"Video {idx}/{len(selected_entries)}", border_style="blue"))
                     
                     with console.status("[bold cyan]Estimating size..."):
-                        estimated_size = downloader.get_estimated_size(entry_url, video_format, audio_format, container_format)
+                        estimated_size = YouTubeTelegramDownloader.estimate_size(
+                            formats['video_formats'], formats['audio_formats'], video_format, audio_format
+                        )
                     
                     if estimated_size > max_size_mb:
                         console.print(f"[yellow]⚠ Skipped:[/yellow] estimated {format_size(estimated_size)} > {format_size(max_size_mb)} limit")
@@ -196,6 +200,7 @@ def main() -> None:
                         
                     except Exception as e:
                         console.print(f"[red]✗ ERROR processing {entry_title}: {e}[/red]")
+                        console.print("[dim]  This may happen if the selected format is not available for this video.[/dim]")
                     finally:
                         if local_download_result:
                             cleanup(local_download_result)
@@ -222,11 +227,11 @@ def main() -> None:
             cleanup(download_result)
         console.print("[bold green]Done![/bold green]")
 
-import sys
 
 if __name__ == '__main__':
     try:
         main()
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Operation cancelled by user.[/yellow]")
-        sys.exit(0)
+        sys.exit(0)
+

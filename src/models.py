@@ -1,17 +1,5 @@
-from typing import Optional, Dict, TypedDict, List, Union
+from typing import Optional, TypedDict, List
 from dataclasses import dataclass
-
-class VideoFormat(TypedDict):
-    format_id: str
-    resolution: int
-    fps: int
-    ext: str
-    size_mb: float
-
-class AudioFormat(TypedDict):
-    format_id: str
-    bitrate: float
-    ext: str
 
 class ParsedVideoFormat(TypedDict):
     format_id: str

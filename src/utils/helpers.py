@@ -46,21 +46,28 @@ def cleanup(download_result: DownloadResult) -> None:
     """
     Clean up downloaded files
     """
+    deleted = set()
     try:
         # Delete video file
         if download_result.video_path and os.path.exists(download_result.video_path):
             os.remove(download_result.video_path)
+            deleted.add(os.path.abspath(download_result.video_path))
         
         # Delete thumbnail if set
         if download_result.thumbnail_path and os.path.exists(download_result.thumbnail_path):
-            os.remove(download_result.thumbnail_path)
+            abs_path = os.path.abspath(download_result.thumbnail_path)
+            if abs_path not in deleted:
+                os.remove(download_result.thumbnail_path)
+                deleted.add(abs_path)
         
         # Get base name for additional thumbnails (originals before conversion)
         base_name = download_result.video_path.rsplit('.', 1)[0]
         for ext in ['webp', 'jpg', 'png', 'jpeg']:
             potential_thumbnail = f"{base_name}.{ext}"
-            if os.path.exists(potential_thumbnail):
+            abs_path = os.path.abspath(potential_thumbnail)
+            if abs_path not in deleted and os.path.exists(potential_thumbnail):
                 os.remove(potential_thumbnail)
+                deleted.add(abs_path)
         
     except Exception as e:
         logging.getLogger(__name__).error(f"Cleanup error: {e}")

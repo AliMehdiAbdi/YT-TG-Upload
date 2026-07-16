@@ -2,12 +2,9 @@ import os
 import shutil
 import logging
 from typing import Optional, Dict, List, Union
-from dataclasses import dataclass
 import yt_dlp
 
-from src.models import VideoFormat, AudioFormat, ParsedVideoFormat, ParsedAudioFormat, VideoInfo, DownloadResult
-from src.utils.validators import validate_youtube_url
-from src.utils.helpers import convert_thumbnail
+from src.models import ParsedVideoFormat, ParsedAudioFormat, VideoInfo, DownloadResult
 
 class YouTubeTelegramDownloader:
     def __init__(self, cookies_file: Optional[str] = None):
@@ -61,8 +58,7 @@ class YouTubeTelegramDownloader:
         :raises ValueError: If URL is invalid
         :raises RuntimeError: If extraction fails
         """
-        if not validate_youtube_url(url):
-            raise ValueError(f"Invalid YouTube URL: {url}")
+
         
         ydl_opts = self._base_opts(quiet=True, no_warnings=True)
         
@@ -155,9 +151,6 @@ class YouTubeTelegramDownloader:
         :param progress_hook: Optional callback for download progress (receives yt-dlp progress dict)
         :return: DownloadResult with path and metadata
         """
-        if not validate_youtube_url(url):
-            raise ValueError(f"Invalid YouTube URL: {url}")
-        
         if not video_format:
             raise ValueError("Video format ID cannot be empty")
         
@@ -211,14 +204,12 @@ class YouTubeTelegramDownloader:
     def is_playlist(self, url: str) -> bool:
         """
         Check if the URL is a YouTube playlist with more than one video.
+        Uses flat extraction for instant detection.
         
         :param url: YouTube URL
         :return: True if playlist
         """
-        if not validate_youtube_url(url):
-            return False
-        
-        ydl_opts = self._base_opts(quiet=True, no_warnings=True)
+        ydl_opts = self._base_opts(quiet=True, no_warnings=True, extract_flat=True)
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -236,9 +227,6 @@ class YouTubeTelegramDownloader:
         :return: List of {'title': str, 'url': str}
         :raises RuntimeError: If extraction fails
         """
-        if not validate_youtube_url(url):
-            raise ValueError(f"Invalid YouTube URL: {url}")
-        
         ydl_opts = self._base_opts(
             quiet=True,
             no_warnings=True,
@@ -269,39 +257,26 @@ class YouTubeTelegramDownloader:
             self.logger.error(f"Unexpected error extracting playlist: {e}")
             raise RuntimeError(f"Failed to extract playlist: {e}")
 
-    def get_estimated_size(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4') -> float:
+    @staticmethod
+    def estimate_size(video_formats: list, audio_formats: list, video_format_id: str, audio_format_id: Optional[str] = None) -> float:
         """
-        Estimate the download size for specified formats in MB.
+        Estimate download size from already-fetched format data.
+        No API call needed — uses size_mb from get_video_qualities().
         
-        :param url: Video URL
-        :param video_format: Video format ID
-        :param audio_format: Optional audio format ID
-        :param container_format: Container (not used for estimation)
-        :return: Estimated size in MB (approximate)
+        :param video_formats: List of parsed video formats
+        :param audio_formats: List of parsed audio formats
+        :param video_format_id: Selected video format ID
+        :param audio_format_id: Selected audio format ID (optional)
+        :return: Estimated size in MB
         """
-        if not validate_youtube_url(url):
-            raise ValueError(f"Invalid YouTube URL: {url}")
-        
-        format_spec = f'{video_format}+{audio_format}' if audio_format else video_format
-        
-        ydl_opts = self._base_opts(
-            format=format_spec,
-            quiet=True,
-            no_warnings=True,
-        )
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                total_size_bytes = 0
-                for fmt in info.get('formats', []):
-                    if fmt.get('format_id') == video_format:
-                        total_size_bytes += fmt.get('filesize') or fmt.get('filesize_approx', 0)
-                    if audio_format and fmt.get('format_id') == audio_format:
-                        total_size_bytes += fmt.get('filesize') or fmt.get('filesize_approx', 0)
-                
-                return total_size_bytes / (1024 * 1024) if total_size_bytes > 0 else 0
-        except Exception as e:
-            self.logger.warning(f"Size estimation failed for {url}: {e}")
-            return 0  # Don't skip if estimation fails
+        total_mb = 0.0
+        for vf in video_formats:
+            if vf['format_id'] == video_format_id:
+                total_mb += vf.get('size_mb', 0)
+                break
+        if audio_format_id:
+            for af in audio_formats:
+                if af['format_id'] == audio_format_id:
+                    total_mb += af.get('size_mb', 0)
+                    break
+        return total_mb
