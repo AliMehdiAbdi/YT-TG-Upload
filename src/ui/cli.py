@@ -28,6 +28,7 @@ def prompt_mode() -> str:
     """
     Show the top-level mode menu. Returns 'single' | 'playlist' | 'batch'.
     """
+    console.print()
     console.print(Panel.fit(
         "[bold]Choose mode[/bold]\n"
         "  [bold]1.[/bold] Single video\n"
@@ -37,6 +38,8 @@ def prompt_mode() -> str:
     ))
     while True:
         choice = Prompt.ask("Mode", default="1", show_default=False).strip()
+        if choice in ("1", "2", "3"):
+            console.print()
         if choice == "1":
             return "single"
         elif choice == "2":

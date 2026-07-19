@@ -18,6 +18,7 @@ def main() -> None:
     logging.getLogger("pyrogram").setLevel(logging.ERROR)
     load_dotenv()
     console.print(Panel.fit("[bold blue]YT-TG-Upload[/bold blue]\n[dim]YouTube to Telegram Downloader/Uploader[/dim]"))
+    console.print()
 
     required_vars = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -61,6 +62,7 @@ def main() -> None:
             console.print("[yellow]⚠ Continuing without cookies.[/yellow]")
             break
 
+    console.print()
     downloader = YouTubeTelegramDownloader(cookies_file)
     uploader = TelegramUploader(bot_token, channel_id)
 
