@@ -1,63 +1,46 @@
 import os
 import sys
 import logging
-from typing import Dict, List, Callable, Optional
 from rich.panel import Panel
-from rich.prompt import Prompt, IntPrompt, Confirm
+from rich.prompt import Prompt, Confirm
 
 from dotenv import load_dotenv
 
-from src.ui.cli import (
-    console,
-    display_video_formats,
-    download_with_progress,
-    upload_with_progress
-)
+from src.ui.cli import console, prompt_continue
+from src.ui.flow import run_session
 from src.core.downloader import YouTubeTelegramDownloader
 from src.telegram.uploader import TelegramUploader
-from src.utils.validators import validate_youtube_url, validate_cookies_path
-from src.utils.helpers import (
-    get_env_setup_instructions,
-    cleanup,
-    convert_thumbnail,
-    format_size,
-    format_size_status,
-)
+from src.utils.validators import validate_cookies_path
+from src.utils.helpers import get_env_setup_instructions
+
 
 def main() -> None:
-    # Suppress pyrogram flood wait warnings (handled automatically)
     logging.getLogger("pyrogram").setLevel(logging.ERROR)
-    
     load_dotenv()
     console.print(Panel.fit("[bold blue]YT-TG-Upload[/bold blue]\n[dim]YouTube to Telegram Downloader/Uploader[/dim]"))
-    
+
     required_vars = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
     if missing_vars:
-        console.print("[bold red]ERROR: Missing required environment variables:[/bold red]")
+        console.print("[bold red]✗ Missing required environment variables:[/bold red]")
         for var in missing_vars:
             console.print(f"  - {var}")
         console.print(get_env_setup_instructions())
         return
-        
+
     if not YouTubeTelegramDownloader.check_js_runtime():
         console.print(Panel(
             "[yellow]No supported JavaScript runtime (Node.js or Deno) could be found.[/yellow]\n\n"
             "YouTube extraction without a JS runtime is deprecated. Some premium or high-quality formats may be missing.\n"
             "To fix this, install [bold]Node.js[/bold] or [bold]Deno[/bold] on your system.",
-            title="⚠ Warning: JS Runtime Missing",
+            title="Warning: JS Runtime Missing",
             border_style="yellow"
         ))
-    
-    url = Prompt.ask("[bold]Enter YouTube video URL[/bold]").strip()
-    if not url:
-        console.print("[red]ERROR: URL cannot be empty[/red]")
-        return
-    
+
+    # Safe to call int() — missing_vars check above guarantees these are non-empty.
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     channel_id = int(os.getenv('TELEGRAM_CHANNEL_ID'))
-    
+
     cookies_file = None
     while True:
         cookies_input = Prompt.ask(
@@ -72,245 +55,34 @@ def main() -> None:
             cookies_file = cookies_input.strip().strip('"').strip("'")
             console.print(f"[green]✓ Cookies:[/green] {cookies_file}")
             break
-        console.print(f"[red]Invalid cookies path:[/red] {err}")
+        console.print(f"[red]✗ Invalid cookies path:[/red] {err}")
         retry = Confirm.ask("Try another path?", default=True)
         if not retry:
-            console.print("[yellow]Continuing without cookies.[/yellow]")
+            console.print("[yellow]⚠ Continuing without cookies.[/yellow]")
             break
-        
-    download_result = None
-    try:
-        downloader = YouTubeTelegramDownloader(cookies_file)
-        uploader = TelegramUploader(bot_token, channel_id)
 
-        if not validate_youtube_url(url):
-            console.print("[red]ERROR: Invalid YouTube URL[/red]")
-            return
+    downloader = YouTubeTelegramDownloader(cookies_file)
+    uploader = TelegramUploader(bot_token, channel_id)
 
-        is_playlist_url = downloader.is_playlist(url)
-        
-        formats = None
-        if is_playlist_url:
-            with console.status("[bold cyan]Extracting playlist entries..."):
-                try:
-                    playlist_entries = downloader.get_playlist_entries(url)
-                except Exception as e:
-                    console.print(f"[red]ERROR: Failed to process playlist: {e}[/red]")
-                    return
-            
-            console.print(f"\n[bold]Playlist contains {len(playlist_entries)} videos:[/bold]")
-            for i, entry in enumerate(playlist_entries, 1):
-                console.print(f"  {i}. {entry['title']}")
-                
-            while True:
-                selection_input = Prompt.ask("\n[bold]Select videos[/bold] [dim](e.g., 'all', '1', '1,3-5')[/dim]").strip().lower()
-                if not selection_input:
-                    console.print("[yellow]Please enter a selection.[/yellow]")
-                    continue
-                
-                if selection_input == 'all':
-                    selected_indices = list(range(len(playlist_entries)))
-                    break
-                else:
-                    try:
-                        selected_indices = []
-                        parts = selection_input.split(',')
-                        for part in parts:
-                            part = part.strip()
-                            if '-' in part:
-                                start, end = map(int, part.split('-'))
-                                selected_indices.extend(range(start-1, end))
-                            else:
-                                selected_indices.append(int(part)-1)
-                        selected_indices = sorted(set(selected_indices))
-                        if all(0 <= idx < len(playlist_entries) for idx in selected_indices):
-                            break
-                        else:
-                            console.print("[red]Invalid indices. Please try again.[/red]")
-                    except ValueError:
-                        console.print("[red]Invalid input. Please use 'all' or comma-separated indices/ranges.[/red]")
-            
-            selected_entries = [playlist_entries[i] for i in selected_indices]
-            console.print(f"[green]✓ Selected {len(selected_entries)} videos.[/green]")
-            console.print(
-                "[dim]Quality is chosen once from the first video; "
-                "later videos auto-match the same resolution/fps/codec.[/dim]"
-            )
-            
-            max_size_mb = IntPrompt.ask("[bold]Enter max file size in MB[/bold]", default=2048)
-            
-            first_video_url = selected_entries[0]['url']
-            with console.status("[bold cyan]Fetching Available Formats from first video..."):
-                formats = downloader.get_video_qualities(first_video_url)
-                
-        else:
-            selected_entries = None
-            max_size_mb = 2048
-            with console.status("[bold cyan]Fetching Available Formats..."):
-                try:
-                    formats = downloader.get_video_qualities(url)
-                except Exception as e:
-                    console.print(f"[red]ERROR: Failed to fetch video formats: {e}[/red]")
-                    return
-        
-        preferred_video, preferred_audio = display_video_formats(formats)
-        video_format = preferred_video['format_id']
-        audio_format = preferred_audio['format_id'] if preferred_audio else None
-        
-        valid_containers = ['mp4', 'mkv', 'webm']
-        console.print("\n[bold]Available container formats:[/bold]")
-        for i, container in enumerate(valid_containers, 1):
-            marker = " [bold green]★ Recommended[/bold green]" if i == 1 else ""
-            console.print(f"  {i}. {container}{marker}")
-        
-        container_format = 'mp4'
-        while True:
-            container_choice = Prompt.ask("\n[bold]Select container format[/bold] [dim](Enter = recommended)[/dim]", default="1", show_default=False).strip()
-            try:
-                idx = int(container_choice) - 1
-                if 0 <= idx < len(valid_containers):
-                    container_format = valid_containers[idx]
-                    break
-                else:
-                    console.print(f"[red]Please enter a number between 1 and {len(valid_containers)}[/red]")
-            except ValueError:
-                console.print("[red]Please enter a valid number[/red]")
-                
-        console.print(f"[green]✓ Container:[/green] {container_format}")
-        
-        if not is_playlist_url:
-            estimated_size = YouTubeTelegramDownloader.estimate_size(
-                formats['video_formats'], formats['audio_formats'], video_format, audio_format
-            )
-            
-            if estimated_size <= 0:
-                console.print(format_size_status(estimated_size))
-                confirm = Confirm.ask(
-                    "[yellow]Proceed without a size estimate?[/yellow]",
-                    default=True,
-                )
-                if not confirm:
-                    console.print("[red]Aborted by user.[/red]")
-                    return
-            elif estimated_size > 2048:
-                confirm = Confirm.ask(
-                    f"[yellow]Estimated size {format_size(estimated_size)} > 2048 MB limit. Proceed anyway?[/yellow]",
-                    default=True,
-                )
-                if not confirm:
-                    console.print("[red]Aborted by user.[/red]")
-                    return
-            else:
-                console.print(format_size_status(estimated_size))
-        
-        if is_playlist_url:
-            successful_uploads = 0
-            skipped = 0
-            with uploader:
-                for idx, entry in enumerate(selected_entries, 1):
-                    entry_url = entry['url']
-                    entry_title = entry['title']
-                    console.print(Panel(f"[bold]{entry_title}[/bold]", title=f"Video {idx}/{len(selected_entries)}", border_style="blue"))
-                    
-                    local_download_result = None
-                    try:
-                        # Re-fetch formats per video; match user's quality preference automatically
-                        with console.status("[bold cyan]Matching formats..."):
-                            entry_formats = downloader.get_video_qualities(entry_url)
-                            matched_video = YouTubeTelegramDownloader.match_video_format(
-                                entry_formats['video_formats'], preferred_video
-                            )
-                            matched_audio = YouTubeTelegramDownloader.match_audio_format(
-                                entry_formats['audio_formats'], preferred_audio
-                            )
-                        
-                        if not matched_video:
-                            console.print("[yellow]⚠ Skipped:[/yellow] no video formats available")
-                            skipped += 1
-                            continue
-                        
-                        entry_video_id = matched_video['format_id']
-                        entry_audio_id = matched_audio['format_id'] if matched_audio else None
-                        
-                        fps = matched_video.get('fps') or 0
-                        fps_part = f"@{int(fps)}fps" if fps else ""
-                        match_note = (
-                            f"{matched_video['resolution']}p{fps_part} "
-                            f"{matched_video.get('vcodec', '')}"
-                        )
-                        if matched_video['format_id'] != preferred_video['format_id']:
-                            console.print(f"[dim]Matched format:[/dim] {match_note}")
-                        else:
-                            console.print(f"[dim]Format:[/dim] {match_note}")
-                        
-                        estimated_size = YouTubeTelegramDownloader.estimate_size(
-                            entry_formats['video_formats'],
-                            entry_formats['audio_formats'],
-                            entry_video_id,
-                            entry_audio_id,
-                        )
-                        
-                        if estimated_size > max_size_mb:
-                            console.print(
-                                f"[yellow]⚠ Skipped:[/yellow] estimated "
-                                f"{format_size(estimated_size)} > {format_size(max_size_mb)} limit"
-                            )
-                            skipped += 1
-                            continue
-                        
-                        console.print(format_size_status(estimated_size, max_size_mb))
-                        
-                        local_download_result = download_with_progress(
-                            downloader, entry_url, entry_video_id, entry_audio_id, container_format
-                        )
-                        console.print(f"[green]✓ Downloaded:[/green] {local_download_result.video_title} ({local_download_result.duration}s)")
+    # Main interactive loop: each iteration is one full single/playlist/batch session.
+    # Cookies (above) are answered once per program run and reused across iterations.
+    while True:
+        try:
+            run_session(downloader, uploader)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]⚠ Current operation cancelled. Returning to mode menu.[/yellow]")
+        except Exception as e:
+            console.print(f"[red]✗ Unexpected error: {e}[/red]")
 
-                        if local_download_result.thumbnail_path:
-                            local_download_result.thumbnail_path = convert_thumbnail(local_download_result.thumbnail_path)
-                        
-                        upload_with_progress(uploader, local_download_result)
-                        console.print("[green]✓ Upload successful![/green]")
-                        successful_uploads += 1
-                        
-                    except Exception as e:
-                        console.print(f"[red]✗ ERROR processing {entry_title}: {e}[/red]")
-                    finally:
-                        if local_download_result:
-                            cleanup(local_download_result)
-            
-            summary = (
-                f"[bold green]Playlist complete:[/bold green] "
-                f"{successful_uploads}/{len(selected_entries)} uploaded"
-            )
-            if skipped:
-                summary += f", {skipped} skipped"
-            console.print(Panel(summary, border_style="green"))
-        else:
-            console.print("")
-            try:
-                download_result = download_with_progress(
-                    downloader, url, video_format, audio_format, container_format
-                )
-                console.print(f"[green]✓ Downloaded:[/green] {download_result.video_title} ({download_result.duration}s)")
+        if not prompt_continue():
+            break
 
-                if download_result.thumbnail_path:
-                    download_result.thumbnail_path = convert_thumbnail(download_result.thumbnail_path)
-                
-                upload_with_progress(uploader, download_result)
-                console.print("[green]✓ Upload successful![/green]")
-                
-            except Exception as e:
-                console.print(f"[red]ERROR: {e}[/red]")
-    finally:
-        if download_result is not None:
-            cleanup(download_result)
-        console.print("[bold green]Done![/bold green]")
+    console.print("[bold green]Done![/bold green]")
 
 
 if __name__ == '__main__':
     try:
         main()
     except (KeyboardInterrupt, EOFError):
-        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+        console.print("\n[yellow]⚠ Operation cancelled by user.[/yellow]")
         sys.exit(0)
-

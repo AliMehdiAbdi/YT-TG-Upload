@@ -9,6 +9,8 @@ class ParsedVideoFormat(TypedDict):
     vcodec: str         # e.g. "avc1" or "vp9"
     size_mb: float      # estimated size, 0 if unknown
     format_note: str
+    dynamic_range: str  # e.g. "SDR", "HDR10", "DV", "HLG"
+    is_progressive: bool  # True if stream contains both video and audio
 
 class ParsedAudioFormat(TypedDict):
     format_id: str

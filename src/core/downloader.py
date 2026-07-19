@@ -5,6 +5,40 @@ from typing import Optional, Dict, List, Union
 import yt_dlp
 
 from src.models import ParsedVideoFormat, ParsedAudioFormat, VideoInfo, DownloadResult
+from src.config import config
+
+
+# Module-level cache for the detected JS runtime's yt-dlp opts.
+# Strategy:
+#   - Positive result (deno or node found) is cached for the rest of the process run,
+#     because installed executables don't vanish mid-run.
+#   - "Not found" is NEVER cached — so a fresh install is picked up on the next program run
+#     (and even next _base_opts call inside the same run).
+_JS_RUNTIME_OPTS: Optional[dict] = None
+
+
+def _detect_js_runtime() -> dict:
+    """
+    Detect a JS runtime once per process (cached when found). Returns a yt-dlp opts dict
+    (possibly empty) suitable for merging into _base_opts output.
+
+    - If a runtime was previously detected, returns the cached opts instantly.
+    - If none was found on a prior call, returns {} but does NOT cache the negative result,
+      so a fresh install (e.g. user installs Node while the program is in another mode)
+      is picked up on the next call.
+    """
+    global _JS_RUNTIME_OPTS
+    if _JS_RUNTIME_OPTS is not None:
+        return _JS_RUNTIME_OPTS  # positive result cached
+    # Re-scan PATH every call when not yet found
+    if shutil.which('deno'):
+        _JS_RUNTIME_OPTS = {'js_runtimes': {'deno': {}}, 'remote_components': ['ejs:npm']}
+    elif shutil.which('node'):
+        _JS_RUNTIME_OPTS = {'js_runtimes': {'node': {}}}
+    else:
+        return {}  # negative result deliberately not cached
+    return _JS_RUNTIME_OPTS
+
 
 class YouTubeTelegramDownloader:
     def __init__(self, cookies_file: Optional[str] = None):
@@ -24,25 +58,21 @@ class YouTubeTelegramDownloader:
     def _base_opts(self, **extra) -> dict:
         """
         Build base yt-dlp options with cookies and JS runtime detection.
+        JS runtime detection is cached at module level once a runtime is found;
+        if none is found, PATH is re-scanned on each call so a fresh install is picked up.
         """
         opts = {}
         if self.cookies_file:
             opts['cookiefile'] = self.cookies_file
         
-        # Auto-detect JS runtime for YouTube EJS signature solving
-        if shutil.which('deno'):
-            opts['js_runtimes'] = {'deno': {}}
-            opts['remote_components'] = ['ejs:npm']
-        elif shutil.which('node'):
-            opts['js_runtimes'] = {'node': {}}
-        
+        opts.update(_detect_js_runtime())
         opts.update(extra)
         return opts
 
     @staticmethod
     def check_js_runtime() -> bool:
         """Check if a supported JS runtime (node or deno) is installed."""
-        return bool(shutil.which('node') or shutil.which('deno'))
+        return bool(_detect_js_runtime())
 
     def get_video_qualities(self, url: str) -> VideoInfo:
         """
@@ -89,6 +119,8 @@ class YouTubeTelegramDownloader:
                             'vcodec': vcodec.split('.')[0],  # e.g. 'avc1.64001f' -> 'avc1'
                             'size_mb': round(size_mb, 1),
                             'format_note': fmt.get('format_note', ''),
+                            'dynamic_range': fmt.get('dynamic_range', 'SDR') or 'SDR',
+                            'is_progressive': acodec != 'none',
                         })
                     
                     # Audio-only streams
@@ -104,12 +136,23 @@ class YouTubeTelegramDownloader:
                             'format_note': fmt.get('format_note', ''),
                         })
                 
-                # Sort video: highest resolution first, then fps, preferred codec, and KNOWN size over unknown
+                # Sort video (descending via reverse=True):
+                #   1. resolution  — highest first
+                #   2. fps         — highest first
+                #   3. codec pref  — avc1/h264 > av01 > vp9 (negated so lower number wins)
+                #   4. known size  — True (known) sorts above False (unknown)
+                #   5. size_mb     — larger first
                 codec_priority = {'avc1': 0, 'h264': 0, 'av01': 1, 'vp9': 2, 'vp09': 2}
                 video_formats = sorted(
                     raw_video,
-                    key=lambda f: (f['resolution'], f['fps'], -codec_priority.get(f['vcodec'], 99), f['size_mb'] > 0, f['size_mb']),
-                    reverse=True
+                    key=lambda f: (
+                        f['resolution'],
+                        f['fps'],
+                        -codec_priority.get(f['vcodec'], 99),
+                        f['size_mb'] > 0,
+                        f['size_mb'],
+                    ),
+                    reverse=True,
                 )
                 
                 # Sort audio: KNOWN bitrate first, then highest bitrate
@@ -135,10 +178,10 @@ class YouTubeTelegramDownloader:
             
         except yt_dlp.utils.DownloadError as e:
             self.logger.error(f"Download error: {e}")
-            raise RuntimeError(f"Failed to extract video info: {e}")
+            raise RuntimeError(f"Failed to extract video info: {e}") from e
         except Exception as e:
             self.logger.error(f"Error fetching video qualities: {e}")
-            raise RuntimeError(f"Unexpected error: {e}")
+            raise RuntimeError(f"Unexpected error: {e}") from e
 
     def download_video(self, url: str, video_format: str, audio_format: Optional[str] = None, container_format: str = 'mp4', progress_hook=None) -> DownloadResult:
         """
@@ -154,8 +197,7 @@ class YouTubeTelegramDownloader:
         if not video_format:
             raise ValueError("Video format ID cannot be empty")
         
-        valid_containers = ['mp4', 'mkv', 'webm']
-        if container_format not in valid_containers:
+        if container_format not in config.valid_containers:
             self.logger.warning(f"Invalid container format: {container_format}. Using mp4 instead.")
             container_format = 'mp4'
         
@@ -167,7 +209,7 @@ class YouTubeTelegramDownloader:
             no_warnings=True,
             noprogress=True,
             merge_output_format=container_format,
-            concurrent_fragment_downloads=10,
+            concurrent_fragment_downloads=config.concurrent_fragment_downloads,
         )
         
         if progress_hook:
@@ -199,7 +241,7 @@ class YouTubeTelegramDownloader:
         
         except Exception as e:
             self.logger.error(f"Download failed: {e}")
-            raise RuntimeError(f"Failed to download video: {e}")
+            raise RuntimeError(f"Failed to download video: {e}") from e
 
     def is_playlist(self, url: str) -> bool:
         """
@@ -252,10 +294,10 @@ class YouTubeTelegramDownloader:
                 return playlist_entries
         except yt_dlp.utils.DownloadError as e:
             self.logger.error(f"Playlist extraction error: {e}")
-            raise RuntimeError(f"Failed to extract playlist entries: {e}")
+            raise RuntimeError(f"Failed to extract playlist entries: {e}") from e
         except Exception as e:
             self.logger.error(f"Unexpected error extracting playlist: {e}")
-            raise RuntimeError(f"Failed to extract playlist: {e}")
+            raise RuntimeError(f"Failed to extract playlist: {e}") from e
 
     @staticmethod
     def estimate_size(video_formats: list, audio_formats: list, video_format_id: str, audio_format_id: Optional[str] = None) -> float:

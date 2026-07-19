@@ -143,7 +143,7 @@ For private or age-restricted videos, you can use a cookies file:
 
 - **Error: Required environment variables not set** - Make sure your `.env` file is properly configured
 - **Warning: JS Runtime Missing** - Install Node.js or Deno for access to premium format extraction
-- **Error: Invalid YouTube URL** - Check that the URL is formatted correctly
+- **Error: Could not read this URL** - The URL may be invalid, private, deleted, or geo-blocked. yt-dlp provides a detailed error message; check the "Details" line for specifics
 - **Upload failures** - Ensure the bot has admin privileges in the channel and the channel ID is correct
 - **No video formats found** - yt-dlp may be outdated; run `pip install -U yt-dlp`
 - **Format ID errors** - Select a format ID from the displayed list

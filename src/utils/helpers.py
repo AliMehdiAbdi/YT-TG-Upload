@@ -61,7 +61,7 @@ def cleanup(download_result: DownloadResult) -> None:
                 deleted.add(abs_path)
         
         # Get base name for additional thumbnails (originals before conversion)
-        base_name = download_result.video_path.rsplit('.', 1)[0]
+        base_name = os.path.splitext(download_result.video_path)[0]
         for ext in ['webp', 'jpg', 'png', 'jpeg']:
             potential_thumbnail = f"{base_name}.{ext}"
             abs_path = os.path.abspath(potential_thumbnail)
